@@ -19,7 +19,13 @@ const { t } = useI18n()
 const route = useRoute()
 
 const sql = ref('SELECT * FROM `table` LIMIT 50')
-const results = ref<{ success: boolean; columns: string[]; rows: Record<string, any>[]; error?: string; duration?: number; sql?: string }[]>([])
+
+type QueryPageResult =
+  | { type: 'select'; success: true; rows: Record<string, any>[]; sql?: string }
+  | { type: 'table'; success: true; columns: string[]; rows: Record<string, any>[]; duration?: number; sql?: string }
+  | { type: 'table'; success: false; columns: string[]; rows: Record<string, any>[]; error: string; sql?: string }
+
+const results = ref<QueryPageResult[]>([])
 const loading = ref(false)
 const error = ref('')
 const connections = ref<Connection[]>([])
@@ -173,7 +179,11 @@ async function execute() {
 
         if (data?.Select?.data?.rows) {
           return { type: 'select', success: true, rows: data.Select.data.rows }
-        } else if (data?.Modify?.data) {
+        }
+
+        let type: 'table' = 'table'
+
+        if (data?.Modify?.data) {
           rows = []
           columns = ['Rows Affected', 'Last Insert ID']
           duration = data.Modify.duration_ms
@@ -194,9 +204,9 @@ async function execute() {
             columns = Object.keys(data[0])
           }
         }
-        return { success: true, columns, rows, duration }
+        return { type, success: true, columns, rows, duration }
       }
-      return { success: false, columns: [], rows: [], error: r.error || 'Query failed' }
+      return { type: 'table', success: false, columns: [], rows: [], error: r.error || 'Query failed' }
     })
 
     const now = new Date()
@@ -264,9 +274,9 @@ function fromHistory(h: { sql: string }) {
             v-else
             :columns="r.columns"
             :rows="r.rows"
-            :duration="r.duration"
+            :duration="'duration' in r ? r.duration : undefined"
             :success="r.success"
-            :error="r.error"
+            :error="'error' in r ? r.error : undefined"
             :title="results.length > 1 ? `Result ${i + 1}` : undefined"
           />
         </div>

@@ -144,15 +144,15 @@ impl CompletionRequest {
                     if is_clause_keyword(&u) {
                         break;
                     }
-                    let table_name = &tokens[i];
+                    let table_name = clean_ident(&tokens[i]);
                     i += 1;
                     if i < tokens.len() {
                         let next_upper = tokens[i].to_uppercase();
                         if next_upper == "AS" {
                             i += 1;
                             if i < tokens.len() {
-                                let alias = &tokens[i];
-                                aliases.insert(table_name.clone(), alias.clone());
+                                let alias = clean_ident(&tokens[i]);
+                                aliases.insert(table_name, alias);
                                 i += 1;
                             }
                         } else if !is_clause_keyword(&next_upper)
@@ -166,14 +166,14 @@ impl CompletionRequest {
                             && next_upper != "HAVING"
                             && next_upper != "LIMIT"
                         {
-                            let alias = &tokens[i];
-                            aliases.insert(table_name.clone(), alias.clone());
+                            let alias = clean_ident(&tokens[i]);
+                            aliases.insert(table_name, alias);
                             i += 1;
                         } else {
-                            aliases.insert(table_name.clone(), table_name.clone());
+                            aliases.insert(table_name.clone(), table_name);
                         }
                     } else {
-                        aliases.insert(table_name.clone(), table_name.clone());
+                        aliases.insert(table_name.clone(), table_name);
                     }
                     if i < tokens.len() {
                         let next_upper = tokens[i].to_uppercase();
@@ -651,4 +651,10 @@ fn is_data_type(token: &str) -> bool {
             | "NOT"
             | "NULL"
     )
+}
+
+/// Strip surrounding identifier quotes (\` " ') from a token string.
+fn clean_ident(s: &str) -> String {
+    s.trim_matches(|c| c == '`' || c == '"' || c == '\'')
+        .to_string()
 }
