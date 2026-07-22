@@ -1,0 +1,29 @@
+[package]
+name = "asql-dsl"
+version = "0.1.0"
+edition = "2021"
+description = "Type-safe SQL DSL builder for MySQL, PostgreSQL, and SQLite"
+license = "MIT"
+repository = "https://github.com/anomalyco/aSqlDB"
+homepage = "https://github.com/anomalyco/aSqlDB"
+documentation = "https://docs.rs/asql-dsl"
+readme = "README.md"
+keywords = ["sql", "dsl", "builder", "mysql", "postgresql", "sqlite"]
+categories = ["database", "sql", "wasm"]
+include = ["src/**/*", "Cargo.toml", "LICENSE", "README.md"]
+
+[lib]
+crate-type = ["lib", "cdylib"]
+
+[package.metadata.wasm-pack.profile.release]
+wasm-opt = false
+
+[dependencies]
+asql-types = { path = "../asql-types" }
+serde = { version = "1", features = ["derive"] }
+serde_json = { version = "1", optional = true }
+wasm-bindgen = { version = "0.2", optional = true }
+
+[features]
+default = []
+wasm = ["wasm-bindgen", "serde_json"]

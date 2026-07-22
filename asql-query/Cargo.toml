@@ -1,0 +1,17 @@
+[package]
+name = "asql-query"
+version = "0.1.0"
+edition = "2021"
+description = "Unified query protocol layer: typed SQL builders + structured execution results"
+license = "MIT"
+
+[dependencies]
+asql-dsl = { path = "../asql-dsl" }
+asql-core = { path = "../asql-core" }
+asql-sql = { path = "../asql-sql" }
+asql-types = { path = "../asql-types" }
+serde = { version = "1", features = ["derive"] }
+tracing = "0.1"
+async-trait = "0.1"
+tokio = { version = "1", features = ["sync", "rt", "macros"] }
+futures = "0.3"

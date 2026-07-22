@@ -1,0 +1,36 @@
+{
+  "productName": "aSqlDB",
+  "version": "0.1.0",
+  "identifier": "com.asqldb.app",
+  "build": {
+    "frontendDist": "../asql-web/frontend/dist",
+    "devUrl": "http://localhost:5173",
+    "beforeDevCommand": "npm run dev --prefix asql-web/frontend"
+  },
+  "bundle": {
+    "active": true,
+    "targets": "all",
+    "externalBin": ["binaries/asql-web"],
+    "icon": [
+      "icons/32x32.png",
+      "icons/128x128.png",
+      "icons/128x128@2x.png",
+      "icons/icon.icns",
+      "icons/icon.ico"
+    ]
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "aSqlDB",
+        "width": 1200,
+        "height": 800,
+        "visible": false
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  }
+}

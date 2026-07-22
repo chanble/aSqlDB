@@ -1,0 +1,15 @@
+[package]
+name = "asql-sql"
+version = "0.1.0"
+edition = "2021"
+description = "A SQL auto-completion library"
+license = "MIT"
+
+[dependencies]
+asql-types = { path = "../asql-types" }
+sqlparser = "0.61"
+thiserror = "2"
+async-trait = "0.1"
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "macros"] }

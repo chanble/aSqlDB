@@ -1,0 +1,41 @@
+{
+  "name": "@asql-dsl/wasm",
+  "version": "0.1.0",
+  "description": "Type-safe SQL DSL builder compiled to WebAssembly — MySQL, PostgreSQL, SQLite",
+  "type": "module",
+  "main": "./js/src/index.ts",
+  "types": "./js/src/index.ts",
+  "files": [
+    "js/pkg/**",
+    "js/src/**"
+  ],
+  "exports": {
+    ".": {
+      "types": "./js/src/index.ts",
+      "import": "./js/src/index.ts",
+      "default": "./js/src/index.ts"
+    }
+  },
+  "scripts": {
+    "build:wasm": "wasm-pack build --target web --out-dir js/pkg -- --features wasm && rm -f js/pkg/.gitignore js/pkg/README.md js/pkg/LICENSE",
+    "prepublish": "npm run build:wasm"
+  },
+  "keywords": [
+    "sql",
+    "dsl",
+    "builder",
+    "mysql",
+    "postgresql",
+    "sqlite",
+    "wasm",
+    "webassembly"
+  ],
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/chanble/aSqlDB"
+  },
+  "sideEffects": [
+    "./js/pkg/asql_dsl.js"
+  ]
+}

@@ -1,0 +1,16 @@
+# Tauri build output
+/target
+/dist
+
+# Generated sidecar binaries (built automatically by build.rs)
+/binaries
+/gen
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Logs
+*.log

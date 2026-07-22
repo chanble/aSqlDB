@@ -1,0 +1,10 @@
+[package]
+name = "asql-types"
+version = "0.1.0"
+edition = "2021"
+description = "Shared database type definitions and preset metadata for AquaDB"
+license = "MIT"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+strum = { version = "0.26", features = ["derive"] }

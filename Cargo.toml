@@ -1,0 +1,4 @@
+[workspace]
+members = ["asql-types", "asql-core", "asql-sql", "asql-backend", "asql-web", "asql-dsl", "asql-query"]
+exclude = ["asql-tauri"]
+resolver = "2"
