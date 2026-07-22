@@ -1,5 +1,5 @@
-import type { InitOutput } from '../pkg/aqua_dsl.js'
-import init, * as wasm from '../pkg/aqua_dsl.js'
+import type { InitOutput } from '../pkg/asql_dsl.js'
+import init, * as wasm from '../pkg/asql_dsl.js'
 
 let ready: Promise<InitOutput> | null = null
 

@@ -1,7 +1,7 @@
-# aqua-dsl
+# asql-dsl
 
-[![crates.io](https://img.shields.io/crates/v/aqua-dsl.svg)](https://crates.io/crates/aqua-dsl)
-[![npm](https://img.shields.io/npm/v/@aqua-dsl/wasm)](https://www.npmjs.com/package/@aqua-dsl/wasm)
+[![crates.io](https://img.shields.io/crates/v/asql-dsl.svg)](https://crates.io/crates/asql-dsl)
+[![npm](https://img.shields.io/npm/v/@asql-dsl/wasm)](https://www.npmjs.com/package/@asql-dsl/wasm)
 
 Type-safe SQL DSL builder for MySQL, PostgreSQL, and SQLite. Generates dialect-aware SQL strings from structured builder calls.
 
@@ -18,13 +18,13 @@ Type-safe SQL DSL builder for MySQL, PostgreSQL, and SQLite. Generates dialect-a
 
 ```toml
 [dependencies]
-aqua-dsl = "0.1"
+asql-dsl = "0.1"
 ```
 
 ### JavaScript / TypeScript (npm)
 
 ```bash
-npm install @aqua-dsl/wasm
+npm install @asql-dsl/wasm
 ```
 
 ## Usage
@@ -32,7 +32,7 @@ npm install @aqua-dsl/wasm
 ### Rust
 
 ```rust
-use aqua_dsl::*;
+use asql_dsl::*;
 
 let mysql = MySql;
 let pg = PostgreSql;
@@ -242,7 +242,7 @@ import init, {
   buildCreateIndex, buildCreateDatabase,
   buildDropTable,
   buildCreateUser, buildGrant,
-} from '@aqua-dsl/wasm'
+} from '@asql-dsl/wasm'
 
 // 必须初始化 Wasm
 await init()

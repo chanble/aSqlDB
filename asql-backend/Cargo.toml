@@ -2,7 +2,7 @@
 name = "asql-backend"
 version = "0.1.0"
 edition = "2021"
-description = "Business logic layer for AquaDB - shared across TUI, CLI, and future UI implementations"
+description = "Business logic layer for aSqlDB - shared across TUI, CLI, and future UI implementations"
 license = "MIT"
 
 [dependencies]

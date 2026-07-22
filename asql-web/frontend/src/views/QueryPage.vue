@@ -30,7 +30,7 @@ const stopOnError = ref(false)
 const showOnlyErrors = ref(false)
 const feedbackItems = ref<SqlFeedbackItem[]>([])
 
-const savedSql = localStorage.getItem('aqua-query-sql')
+const savedSql = localStorage.getItem('sql-query-sql')
 if (savedSql) sql.value = savedSql
 
 // --- WebSocket 补全 ---
@@ -132,7 +132,7 @@ onMounted(async () => {
     if (querySql) {
       sql.value = querySql
     }
-    const savedHistory = localStorage.getItem('aqua-query-history')
+    const savedHistory = localStorage.getItem('asql-query-history')
     if (savedHistory) {
       history.value = JSON.parse(savedHistory)
     }
@@ -151,7 +151,7 @@ async function execute() {
   }
   if (!sql.value.trim()) return
 
-  localStorage.setItem('aqua-query-sql', sql.value)
+  localStorage.setItem('asql-query-sql', sql.value)
 
   loading.value = true
   error.value = ''
@@ -220,7 +220,7 @@ async function execute() {
     }
     history.value.unshift(historyEntry)
     if (history.value.length > 50) history.value.pop()
-    localStorage.setItem('aqua-query-history', JSON.stringify(history.value))
+    localStorage.setItem('asql-query-history', JSON.stringify(history.value))
 
   } catch (e: any) {
     error.value = e.message || String(e)
@@ -230,7 +230,7 @@ async function execute() {
 
 function clearHistory() {
   history.value = []
-  localStorage.removeItem('aqua-query-history')
+  localStorage.removeItem('asql-query-history')
 }
 
 function fromHistory(h: { sql: string }) {

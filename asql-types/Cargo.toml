@@ -2,7 +2,7 @@
 name = "asql-types"
 version = "0.1.0"
 edition = "2021"
-description = "Shared database type definitions and preset metadata for AquaDB"
+description = "Shared database type definitions and preset metadata for aSqlDB"
 license = "MIT"
 
 [dependencies]

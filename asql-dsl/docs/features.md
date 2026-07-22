@@ -1,4 +1,4 @@
-# aqua-dsl 功能规划
+# asql-dsl 功能规划
 
 ## 项目定位
 
@@ -125,7 +125,7 @@
 ## 八、模块组织（建议）
 
 ```
-aqua-dsl/
+asql-dsl/
 ├── Cargo.toml
 ├── docs/
 │   └── features.md

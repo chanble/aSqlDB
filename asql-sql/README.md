@@ -1,4 +1,4 @@
-# aqua-sql
+# asql-sql
 
 A SQL auto-completion and syntax tokenization library written in Rust.
 
@@ -19,13 +19,13 @@ Add to your `Cargo.toml`:
 
 ```toml
 [dependencies]
-aqua-sql = "0.1.0"
+asql-sql = "0.1.0"
 ```
 
 ### Auto-Completion
 
 ```rust
-use aqua_sql::{get_suggestions, DatabaseType, DatabaseSchema, Table, Column};
+use asql_sql::{get_suggestions, DatabaseType, DatabaseSchema, Table, Column};
 
 let mut schema = DatabaseSchema::new();
 schema.add_table(Table {
@@ -96,7 +96,7 @@ let suggestions = get_suggestions(
 ### Syntax Tokenization (for highlighting)
 
 ```rust
-use aqua_sql::{tokenize_sql, TokenKind, Span};
+use asql_sql::{tokenize_sql, TokenKind, Span};
 
 let sql = "SELECT u.name, COUNT(o.id) FROM users u";
 let spans: Vec<Span> = tokenize_sql(sql);

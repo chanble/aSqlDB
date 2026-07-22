@@ -1,5 +1,5 @@
-// Re-export all database types and preset metadata from aqua-types.
+// Re-export all database types and preset metadata from asql-types.
 pub use asql_types::{
-    Charset, DatabaseType, DataType, DataTypeCategory, DbFunction, DbTypeInfo, Engine,
+    Charset, DataType, DataTypeCategory, DatabaseType, DbFunction, DbTypeInfo, Engine,
     FunctionCategory, Privilege, PrivilegeScope, SqlMode, DATABASE_TYPES,
 };

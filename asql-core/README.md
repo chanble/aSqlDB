@@ -1,8 +1,8 @@
-#  Aqua Core
+#  asql Core
 
-**Aqua Core** 是一个基于 Rust 开发的高性能、通用数据库操作核心库。它旨在简化多数据库环境下的连接管理与 SQL 执行流程，为上层应用提供统一的接口来操作 MySQL、PostgreSQL 和 SQLite。
+**asql Core** 是一个基于 Rust 开发的高性能、通用数据库操作核心库。它旨在简化多数据库环境下的连接管理与 SQL 执行流程，为上层应用提供统一的接口来操作 MySQL、PostgreSQL 和 SQLite。
 
-通过封装 `sqlx` 的 `Any` 驱动特性，Aqua Core 实现了数据库类型的动态适配，让你能够编写与具体数据库无关的代码，同时保持异步、类型安全和零开销抽象的优势。
+通过封装 `sqlx` 的 `Any` 驱动特性，asql Core 实现了数据库类型的动态适配，让你能够编写与具体数据库无关的代码，同时保持异步、类型安全和零开销抽象的优势。
 
 ---
 
@@ -21,11 +21,11 @@
 
 #### 1. 添加依赖
 
-在你的 `Cargo.toml` 中添加 `aqua-core`：
+在你的 `Cargo.toml` 中添加 `asql-core`：
 
 ```toml
 [dependencies]
-aqua-core = "0.1.0"
+asql-core = "0.1.0"
 tokio = { version = "1", features = ["full"] }
 serde_json = "1"
 ```
@@ -33,9 +33,9 @@ serde_json = "1"
 #### 2. 初始化与连接
 
 ```rust
-use aqua_core::db_manager::DbManager;
-use aqua_core::executor::execute_sql;
-use aqua_core::result::DbSuccessResult;
+use asql_core::db_manager::DbManager;
+use asql_core::executor::execute_sql;
+use asql_core::result::DbSuccessResult;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -105,7 +105,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 #### 3. 结果集标准化
 
-Aqua Core 将不同数据库的原始返回数据统一转换为易于序列化的结构：
+asql Core 将不同数据库的原始返回数据统一转换为易于序列化的结构：
 
 - **SetResult (查询)**:
     - `columns`: 列名与类型信息。
@@ -139,4 +139,3 @@ Aqua Core 将不同数据库的原始返回数据统一转换为易于序列化�
 ###  许可证
 
 MIT License
-

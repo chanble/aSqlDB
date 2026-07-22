@@ -5,23 +5,23 @@ use std::path::Path;
 use std::pin::Pin;
 use std::sync::Arc;
 
-// ─── Re-exports: aqua-dsl ────────────────────────────────────────────
+// ─── Re-exports: asql-dsl ────────────────────────────────────────────
 pub use asql_dsl::ddl::{
     AlterTableBuilder, ColumnDef, CreateTableBuilder, DatabaseBuilder, DropBuilder, DropTarget,
-    GrantBuilder, GrantRole, IndexBuilder, IndexColumn, IndexMethod, IndexType,
-    MaintenanceOp, TableMaintenanceBuilder, UserBuilder,
+    GrantBuilder, GrantRole, IndexBuilder, IndexColumn, IndexMethod, IndexType, MaintenanceOp,
+    TableMaintenanceBuilder, UserBuilder,
 };
 pub use asql_dsl::dialect::{Dialect, MySql, PostgreSql, Sqlite};
 pub use asql_dsl::dml::{DeleteBuilder, InsertBuilder, UpdateBuilder};
 pub use asql_dsl::dql::{SelectBuilder, SelectColumn};
-pub use asql_dsl::{OrderBy, WhereBuilder};
 pub use asql_dsl::introspection::{
     ColumnsIntrospection, DatabasesIntrospection, IndexesIntrospection, ServerIntrospection,
     TableNameMatch, TablesIntrospection, UsersIntrospection,
 };
+pub use asql_dsl::{OrderBy, WhereBuilder};
 pub use asql_types::{ColumnExtra, ColumnType, EnumType, FloatType, IntType, StringType};
 
-// ─── Re-exports: aqua-core ───────────────────────────────────────────
+// ─── Re-exports: asql-core ───────────────────────────────────────────
 pub use asql_core::db_manager::{DatabaseType, DbManager, Pool};
 pub use asql_core::export::{
     ColumnTarget, DataFormat, DatabaseOption, ExportConfig, ExportReceiver, TableDef, TableOption,
@@ -32,13 +32,13 @@ pub use asql_core::result::{
     DbError, DbRow, DbSuccessResult, ExecutionResult, ModifyResult, SchemaResult, SetResult,
 };
 
-// ─── Re-exports: preset types from aqua-types ────────────────────────
+// ─── Re-exports: preset types from asql-types ────────────────────────
 pub use asql_types::{
     Charset, DataType, DataTypeCategory, DbFunction, DbTypeInfo, Engine, FunctionCategory,
     Privilege, PrivilegeScope, SqlMode, DATABASE_TYPES,
 };
 
-// ─── Re-exports: aqua-sql (SQL completion) ───────────────────────────
+// ─── Re-exports: asql-sql (SQL completion) ───────────────────────────
 pub use asql_sql::{
     get_suggestions, Column as SchemaColumn, DatabaseSchema, SchemaProvider, Suggestion,
     SuggestionKind, Table as SchemaTable,
@@ -63,7 +63,7 @@ pub struct SelectResult {
 /// Unified query protocol layer.
 ///
 /// Each method is a typed protocol entry: it accepts structured parameters,
-/// builds the SQL internally via `aqua-dsl`, executes it via `aqua-core`,
+/// builds the SQL internally via `asql-dsl`, executes it via `asql-core`,
 /// and returns a structured result.
 ///
 /// Any frontend (Web, TUI, CLI, WASM, etc.) can use this as the single
@@ -1405,7 +1405,8 @@ impl QueryBuilder {
         match_mode: TableNameMatch,
     ) -> Pin<Box<dyn Future<Output = Result<ExecutionResult<Vec<TableInfo>>, DbError>> + Send + '_>>
     {
-        let sql = TablesIntrospection::list_tables(&*self.dialect, database, table_name, match_mode);
+        let sql =
+            TablesIntrospection::list_tables(&*self.dialect, database, table_name, match_mode);
         let dm = self.db_manager.clone();
         let conn = conn.to_string();
         Box::pin(async move {

@@ -1,3 +1,4 @@
 
 # wasm-pack build output
 /js/pkg/
+Cargo.lock
