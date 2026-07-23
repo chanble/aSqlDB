@@ -5,11 +5,13 @@ import { useRoute } from 'vue-router'
 import { api } from '../api'
 import SqlFeedback from '../components/SqlFeedback.vue'
 import type { SqlFeedbackItem } from '../components/SqlFeedback.vue'
+import { useQueryHistory } from '../composables/useQueryHistory'
 
 const { t } = useI18n()
 const route = useRoute()
 const connection = computed(() => route.params.connection as string)
 const database = computed(() => route.params.db as string)
+const { addEntry: addHistoryEntry } = useQueryHistory()
 
 const server = ref('%')
 const username = ref('')
@@ -130,6 +132,7 @@ async function save() {
       duration: 0,
       time,
     }]
+    addHistoryEntry({ time, sql, duration: '0ms', success: true })
     username.value = ''
     password.value = ''
     selectedPrivileges.value = new Set()
@@ -141,6 +144,7 @@ async function save() {
       duration: 0,
       time,
     }]
+    addHistoryEntry({ time, sql: 'Error: ' + (e.message || e), duration: '0ms', success: false })
   }
   saving.value = false
 }

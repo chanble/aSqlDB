@@ -13,10 +13,13 @@ import { sql as sqlLang } from '@codemirror/lang-sql'
 import { autocompletion } from '@codemirror/autocomplete'
 import { EditorView, keymap } from '@codemirror/view'
 import { indentWithTab } from '@codemirror/commands'
+import { useQueryHistory } from '../composables/useQueryHistory'
 
 const { t } = useI18n()
 
 const route = useRoute()
+
+const { history, addEntry: addHistoryEntry, clearHistory } = useQueryHistory()
 
 const sql = ref('SELECT * FROM `table` LIMIT 50')
 
@@ -30,7 +33,6 @@ const loading = ref(false)
 const error = ref('')
 const connections = ref<Connection[]>([])
 const activeConn = ref('')
-const history = ref<{ time: string; sql: string; duration: string; success: boolean }[]>([])
 const limitRows = ref('')
 const stopOnError = ref(false)
 const showOnlyErrors = ref(false)
@@ -138,10 +140,6 @@ onMounted(async () => {
     if (querySql) {
       sql.value = querySql
     }
-    const savedHistory = localStorage.getItem('asql-query-history')
-    if (savedHistory) {
-      history.value = JSON.parse(savedHistory)
-    }
   } catch { /* ignore */ }
 })
 
@@ -222,25 +220,17 @@ async function execute() {
       time,
     })
 
-    const historyEntry = {
+    addHistoryEntry({
       time,
       sql: sql.value,
       duration: elapsed + 'ms',
       success: allSuccess,
-    }
-    history.value.unshift(historyEntry)
-    if (history.value.length > 50) history.value.pop()
-    localStorage.setItem('asql-query-history', JSON.stringify(history.value))
+    })
 
   } catch (e: any) {
     error.value = e.message || String(e)
   }
   loading.value = false
-}
-
-function clearHistory() {
-  history.value = []
-  localStorage.removeItem('asql-query-history')
 }
 
 function fromHistory(h: { sql: string }) {
@@ -327,3 +317,9 @@ function fromHistory(h: { sql: string }) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.sql-history-item span {
+  margin-right: 5px;
+}
+</style>

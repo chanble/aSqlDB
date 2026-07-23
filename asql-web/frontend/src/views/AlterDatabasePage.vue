@@ -6,10 +6,12 @@ import { api } from '../api'
 import SqlFeedback from '../components/SqlFeedback.vue'
 import SearchableSelect from '../components/SearchableSelect.vue'
 import type { SqlFeedbackItem } from '../components/SqlFeedback.vue'
+import { useQueryHistory } from '../composables/useQueryHistory'
 
 
 const route = useRoute()
 const router = useRouter()
+const { addEntry: addHistoryEntry } = useQueryHistory()
 
 const { t } = useI18n()
 
@@ -67,10 +69,12 @@ async function save() {
     const d = new Date()
     const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
     feedbackItems.value = [{ label: `${connection.value}.${database.value}`, success: true, sql, duration: 0, time }]
+    addHistoryEntry({ time, sql, duration: '0ms', success: true })
   } catch {
     const d = new Date()
     const time = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}:${d.getSeconds().toString().padStart(2, '0')}`
     feedbackItems.value = [{ label: `${connection.value}.${database.value}`, success: false, sql, duration: 0, time }]
+    addHistoryEntry({ time, sql, duration: '0ms', success: false })
   }
   saving.value = false
 }
