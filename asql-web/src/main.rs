@@ -1,9 +1,11 @@
 use std::net::SocketAddr;
+use std::sync::Arc;
 
 use asql_backend::AppConfig;
 use axum::Router;
 use clap::Parser;
 use tokio::net::TcpListener;
+use tower::service_fn;
 use tower_http::services::ServeDir;
 use tracing_subscriber::EnvFilter;
 
@@ -69,8 +71,29 @@ async fn main() {
     let backend = asql_backend::BackendHandle::new(config_dir);
     backend.load_connections().await;
 
+    // Load index.html content for SPA fallback (refresh not 404)
+    let index_html = Arc::new(
+        std::fs::read_to_string(static_dir.join("index.html"))
+            .unwrap_or_else(|_| {
+                tracing::warn!("index.html not found in static dir, SPA routing will not work");
+                String::new()
+            }),
+    );
+
+    let not_found_service = service_fn(move |_req: axum::http::Request<axum::body::Body>| {
+        let html = index_html.clone();
+        async move {
+            let resp = axum::response::Response::builder()
+                .header("content-type", "text/html; charset=utf-8")
+                .body(axum::body::Body::from(html.as_ref().clone()))
+                .unwrap();
+            Ok::<_, std::convert::Infallible>(resp)
+        }
+    });
+
     let serve_dir = ServeDir::new(std::path::PathBuf::from(&static_dir))
-        .append_index_html_on_directories(true);
+        .append_index_html_on_directories(true)
+        .not_found_service(not_found_service);
 
     let app = Router::<AppState>::new()
         .nest("/api", api::build_router())
