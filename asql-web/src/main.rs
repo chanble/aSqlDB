@@ -26,21 +26,27 @@ struct Cli {
 }
 
 /// Resolve the static directory path.
-/// Checks the given path first, then falls back to a path relative to the
-/// executable location (useful when running as a Tauri sidecar).
-/// Also tries alternate names like `frontend_dist` for Tauri bundle resources.
+/// Checks the given path first, then falls back to paths relative to the
+/// executable location and common Tauri bundle resource directories.
 fn resolve_static_dir(path: &str) -> std::path::PathBuf {
     let p = std::path::PathBuf::from(path);
     if p.exists() {
         return p;
     }
     if let Ok(exe) = std::env::current_exe() {
-        let alt = exe.parent().unwrap().join(path);
+        let exe_dir = exe.parent().unwrap();
+        // Relative to exe directory
+        let alt = exe_dir.join(path);
+        if alt.exists() {
+            return alt;
+        }
+        // Tauri v2 bundles resources in resources/ subdirectory on Windows
+        let alt = exe_dir.join("resources").join(path.replace('/', "_"));
         if alt.exists() {
             return alt;
         }
     }
-    // Tauri bundles resources at app root; try alternate pattern `frontend_dist`
+    // Tauri bundles resources at app root; try alternate name `frontend_dist`
     let alt = std::path::PathBuf::from(path.replace('/', "_"));
     if alt.exists() {
         return alt;
