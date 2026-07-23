@@ -23,6 +23,29 @@ struct Cli {
     config_dir: Option<String>,
 }
 
+/// Resolve the static directory path.
+/// Checks the given path first, then falls back to a path relative to the
+/// executable location (useful when running as a Tauri sidecar).
+/// Also tries alternate names like `frontend_dist` for Tauri bundle resources.
+fn resolve_static_dir(path: &str) -> std::path::PathBuf {
+    let p = std::path::PathBuf::from(path);
+    if p.exists() {
+        return p;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        let alt = exe.parent().unwrap().join(path);
+        if alt.exists() {
+            return alt;
+        }
+    }
+    // Tauri bundles resources at app root; try alternate pattern `frontend_dist`
+    let alt = std::path::PathBuf::from(path.replace('/', "_"));
+    if alt.exists() {
+        return alt;
+    }
+    p
+}
+
 #[tokio::main]
 async fn main() {
     tracing_subscriber::fmt()
@@ -36,6 +59,7 @@ async fn main() {
 
     let static_dir = std::env::var("ASQL_STATIC_DIR")
         .unwrap_or_else(|_| "frontend/dist".to_string());
+    let static_dir = resolve_static_dir(&static_dir);
 
     let config_dir = cli
         .config_dir

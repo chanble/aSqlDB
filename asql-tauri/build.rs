@@ -1,5 +1,5 @@
 use std::env;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 fn main() {
@@ -49,5 +49,34 @@ fn build_sidecar() {
 
     std::fs::copy(&source, &destination).expect("failed to copy sidecar binary");
 
+    // Also copy frontend dist so the sidecar can find it at runtime
+    let frontend_src = out_dir.join("frontend").join("dist");
+    if frontend_src.exists() {
+        let frontend_dst = PathBuf::from(env::var("CARGO_MANIFEST_DIR").unwrap())
+            .join("frontend_dist");
+        if frontend_dst.exists() {
+            std::fs::remove_dir_all(&frontend_dst).expect("failed to remove old frontend dist");
+        }
+        copy_dir(&frontend_src, &frontend_dst);
+        println!("cargo:warning=Frontend dist copied to {}", frontend_dst.display());
+    } else {
+        println!("cargo:warning=Frontend dist not found at {}", frontend_src.display());
+    }
+
     println!("cargo:rustc-env=ASQL_WEB_SIDECAR_PATH={}", destination.display());
+}
+
+fn copy_dir(src: &Path, dst: &Path) {
+    std::fs::create_dir_all(dst).expect("failed to create destination dir");
+    for entry in std::fs::read_dir(src).expect("failed to read source dir") {
+        let entry = entry.expect("failed to read entry");
+        let file_type = entry.file_type().expect("failed to read file type");
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+        if file_type.is_dir() {
+            copy_dir(&src_path, &dst_path);
+        } else {
+            std::fs::copy(&src_path, &dst_path).expect("failed to copy file");
+        }
+    }
 }

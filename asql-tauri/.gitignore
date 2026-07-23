@@ -4,6 +4,7 @@
 
 # Generated sidecar binaries (built automatically by build.rs)
 /binaries
+/frontend_dist
 /gen
 
 # OS / editor
