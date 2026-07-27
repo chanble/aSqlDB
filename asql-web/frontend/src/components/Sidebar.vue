@@ -277,7 +277,6 @@ function truncate(url: string, max = 30): string {
 <template>
     <aside class="sidebar">
         <div class="sidebar-brand" @click="router.push('/')">
-            <img src="/logo.png" alt="logo" class="sidebar-logo" />
             <span class="logo">{{ $t('sidebar.brand') }}</span>
             <span class="version">{{ $t('sidebar.version') }}</span>
         </div>
@@ -367,12 +366,6 @@ function truncate(url: string, max = 30): string {
 
 .sidebar-brand:hover {
     background: #ddeeff;
-}
-
-.sidebar-logo {
-    width: 32px;
-    height: 32px;
-    border-radius: 4px;
 }
 
 .sidebar-brand .logo {
