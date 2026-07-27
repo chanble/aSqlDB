@@ -7,8 +7,8 @@ license = "MIT"
 
 [dependencies]
 # Internal crates
-asql-query = { path = "../asql-query" }
-asql-sql = { path = "../asql-sql" }
+asql-query = "0.1.0"
+asql-sql = "0.1.0"
 
 # Async
 tokio = { version = "1", features = ["full"] }

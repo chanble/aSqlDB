@@ -2,3 +2,12 @@
 members = ["asql-types", "asql-core", "asql-sql", "asql-backend", "asql-web", "asql-dsl", "asql-query"]
 exclude = ["asql-tauri"]
 resolver = "2"
+
+[patch.crates-io]
+asql-types = { path = "asql-types" }
+asql-core = { path = "asql-core" }
+asql-sql = { path = "asql-sql" }
+asql-dsl = { path = "asql-dsl" }
+asql-query = { path = "asql-query" }
+asql-backend = { path = "asql-backend" }
+asql-web = { path = "asql-web" }

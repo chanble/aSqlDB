@@ -6,7 +6,7 @@ description = "A SQL auto-completion library"
 license = "MIT"
 
 [dependencies]
-asql-types = { path = "../asql-types" }
+asql-types = "0.1.0"
 sqlparser = "0.61"
 thiserror = "2"
 async-trait = "0.1"
