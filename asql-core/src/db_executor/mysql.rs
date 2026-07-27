@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use sqlx::{Column, Row, TypeInfo};
+use sqlx::{AssertSqlSafe, Column, Row, TypeInfo};
 
 use crate::result::{DbError, DbRow, ModifyResult, SchemaResult, SetResult};
 
@@ -7,7 +7,7 @@ pub(crate) async fn execute_select_mysql(
     sql: &str,
     conn: &mut sqlx::MySqlConnection,
 ) -> Result<SetResult, DbError> {
-    let rows = sqlx::query(sql)
+    let rows = sqlx::query(AssertSqlSafe(sql))
         .persistent(false)
         .fetch_all(conn)
         .await
@@ -22,7 +22,7 @@ pub(crate) async fn execute_modify_mysql(
     sql: &str,
     conn: &mut sqlx::MySqlConnection,
 ) -> Result<ModifyResult, DbError> {
-    let r = sqlx::query(sql)
+    let r = sqlx::query(AssertSqlSafe(sql))
         .persistent(false)
         .execute(conn)
         .await
@@ -37,7 +37,7 @@ pub(crate) async fn execute_generic_mysql(
     sql: &str,
     conn: &mut sqlx::MySqlConnection,
 ) -> Result<SchemaResult, DbError> {
-    sqlx::raw_sql(sql)
+    sqlx::raw_sql(AssertSqlSafe(sql))
         .execute(conn)
         .await
         .map_err(|e| crate::make_error!(sql, e))?;

@@ -249,6 +249,7 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use sqlx::Connection;
+    use sqlx::AssertSqlSafe;
 
     #[serial]
     #[test]
@@ -293,8 +294,8 @@ mod tests {
         let mut conn = sqlx::sqlite::SqliteConnection::connect(":memory:")
             .await
             .expect("cannot create in-memory SQLite database");
-        sqlx::query(create).execute(&mut conn).await.unwrap();
-        sqlx::query(insert).execute(&mut conn).await.unwrap();
+        sqlx::query(AssertSqlSafe(create)).execute(&mut conn).await.unwrap();
+        sqlx::query(AssertSqlSafe(insert)).execute(&mut conn).await.unwrap();
         conn
     }
 

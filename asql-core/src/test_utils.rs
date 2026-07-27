@@ -1,4 +1,4 @@
-use sqlx::Connection;
+use sqlx::{AssertSqlSafe, Connection};
 
 /// Base MySQL URL without a database path.
 /// Respects the `ASQL_TEST_MYSQL_URL` environment variable.
@@ -19,7 +19,7 @@ impl Drop for MySqlDbGuard {
             let base_url = mysql_base_url();
             if let Ok(mut conn) = sqlx::MySqlConnection::connect(&base_url).await {
                 let sql = format!("DROP DATABASE IF EXISTS `{}`", db_name);
-                sqlx::query(&sql).execute(&mut conn).await.ok();
+                sqlx::query(AssertSqlSafe(sql.as_str())).execute(&mut conn).await.ok();
             }
         });
     }
@@ -31,7 +31,7 @@ pub async fn mysql_conn(db_name: &str) -> Option<(sqlx::MySqlConnection, MySqlDb
     let base_url = mysql_base_url();
     if let Ok(mut conn) = sqlx::MySqlConnection::connect(&base_url).await {
         let sql = format!("CREATE DATABASE IF NOT EXISTS `{}`", db_name);
-        sqlx::query(&sql).execute(&mut conn).await.ok();
+        sqlx::query(AssertSqlSafe(sql.as_str())).execute(&mut conn).await.ok();
         drop(conn);
     }
     let url = if base_url.ends_with('/') {
@@ -62,7 +62,7 @@ impl Drop for PgDbGuard {
             let base_url = pg_base_url();
             if let Ok(mut conn) = sqlx::PgConnection::connect(&base_url).await {
                 let sql = format!("DROP DATABASE IF EXISTS \"{}\"", db_name);
-                sqlx::query(&sql).execute(&mut conn).await.ok();
+                sqlx::query(AssertSqlSafe(sql.as_str())).execute(&mut conn).await.ok();
             }
         });
     }
@@ -74,7 +74,7 @@ pub async fn pg_conn(db_name: &str) -> Option<(sqlx::PgConnection, PgDbGuard)> {
     let base_url = pg_base_url();
     if let Ok(mut conn) = sqlx::PgConnection::connect(&base_url).await {
         let sql = format!("CREATE DATABASE IF NOT EXISTS \"{}\"", db_name);
-        sqlx::query(&sql).execute(&mut conn).await.ok();
+        sqlx::query(AssertSqlSafe(sql.as_str())).execute(&mut conn).await.ok();
         drop(conn);
     }
     let url = if base_url.ends_with('/') {

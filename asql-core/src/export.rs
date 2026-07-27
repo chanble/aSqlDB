@@ -1,7 +1,7 @@
 use std::sync::Arc;
 
 use futures_util::StreamExt;
-use sqlx::{Executor, Row};
+use sqlx::{AssertSqlSafe, Executor, Row};
 use tokio::sync::mpsc;
 
 use crate::db_executor::{get_column_value_mysql, get_column_value_pg, get_column_value_sqlite};
@@ -127,7 +127,7 @@ pub async fn export_stream(
                 let mut conn = p.0.lock().await;
 
                 if let Some(ref db) = database {
-                    if let Err(e) = conn.execute(sqlx::raw_sql(&format!("USE `{}`", db))).await {
+                    if let Err(e) = conn.execute(sqlx::raw_sql(AssertSqlSafe(format!("USE `{}`", db)))).await {
                         let msg = format!("-- Error: cannot switch to database `{}`: {}", db, e);
                         let _ = tx.send(msg).await;
                         return;
@@ -219,7 +219,7 @@ pub async fn export_stream(
                             &database,
                         );
 
-                        let mut stream = sqlx::query(&select_sql).fetch(&mut *conn);
+                        let mut stream = sqlx::query(AssertSqlSafe(select_sql.as_str())).fetch(&mut *conn);
                         while let Some(row_result) = stream.next().await {
                             let row = match row_result {
                                 Ok(r) => r,
@@ -246,7 +246,7 @@ pub async fn export_stream(
 
                 if let Some(ref db) = database {
                     if let Err(e) = conn
-                        .execute(sqlx::raw_sql(&format!("SET search_path TO \"{}\"", db)))
+                        .execute(sqlx::raw_sql(AssertSqlSafe(format!("SET search_path TO \"{}\"", db))))
                         .await
                     {
                         let msg = format!("-- Error: cannot set search_path to \"{}\": {}", db, e);
@@ -333,7 +333,7 @@ pub async fn export_stream(
                             &database,
                         );
 
-                        let mut stream = sqlx::query(&select_sql).fetch(&mut *conn);
+                        let mut stream = sqlx::query(AssertSqlSafe(select_sql.as_str())).fetch(&mut *conn);
                         while let Some(row_result) = stream.next().await {
                             let row = match row_result {
                                 Ok(r) => r,
@@ -421,7 +421,7 @@ pub async fn export_stream(
                             &database,
                         );
 
-                        let mut stream = sqlx::query(&select_sql).fetch(&mut *conn);
+                        let mut stream = sqlx::query(AssertSqlSafe(select_sql.as_str())).fetch(&mut *conn);
                         while let Some(row_result) = stream.next().await {
                             let row = match row_result {
                                 Ok(r) => r,
@@ -516,7 +516,7 @@ async fn resolve_columns_mysql(
         ColumnTarget::Selected(cols) => cols.clone(),
         ColumnTarget::All => {
             let sql = format!("SHOW COLUMNS FROM {}", qualified_table(&td.name, &None));
-            match sqlx::query(&sql).fetch_all(conn).await {
+            match sqlx::query(AssertSqlSafe(sql.as_str())).fetch_all(conn).await {
                 Ok(rows) => rows
                     .iter()
                     .filter_map(|r| r.try_get::<String, _>(0).ok())
@@ -535,7 +535,7 @@ async fn get_create_table_mysql(
     let table_ref = qualified_table(table, database);
     let sql = format!("SHOW CREATE TABLE {}", table_ref);
 
-    match sqlx::query(&sql).fetch_one(conn).await {
+    match sqlx::query(AssertSqlSafe(sql.as_str())).fetch_one(conn).await {
         Ok(row) => row
             .try_get::<String, _>(1)
             .map(|s| format!("{};\n", s))
@@ -605,7 +605,7 @@ async fn resolve_columns_pg(conn: &mut sqlx::postgres::PgConnection, td: &TableD
                 "SELECT column_name FROM information_schema.columns WHERE table_name = '{}' ORDER BY ordinal_position",
                 td.name.replace('\'', "''")
             );
-            match sqlx::query(&sql).fetch_all(conn).await {
+            match sqlx::query(AssertSqlSafe(sql.as_str())).fetch_all(conn).await {
                 Ok(rows) => rows
                     .iter()
                     .filter_map(|r| r.try_get::<String, _>(0).ok())
@@ -626,7 +626,7 @@ async fn get_create_table_pg(
         table.replace('\'', "''")
     );
     // For PG we generate a simplified CREATE TABLE
-    match sqlx::query(&sql).fetch_all(conn).await {
+    match sqlx::query(AssertSqlSafe(sql.as_str())).fetch_all(conn).await {
         Ok(rows) => {
             let cols: Vec<String> = rows
                 .iter()
@@ -686,7 +686,7 @@ async fn resolve_columns_sqlite(
         ColumnTarget::Selected(cols) => cols.clone(),
         ColumnTarget::All => {
             let sql = format!("PRAGMA table_info('{}')", td.name.replace('\'', "''"));
-            match sqlx::query(&sql).fetch_all(conn).await {
+            match sqlx::query(AssertSqlSafe(sql.as_str())).fetch_all(conn).await {
                 Ok(rows) => rows
                     .iter()
                     .filter_map(|r| r.try_get::<String, _>(1).ok())
@@ -706,7 +706,7 @@ async fn get_create_table_sqlite(
         "SELECT sql FROM sqlite_master WHERE type='table' AND name='{}'",
         table.replace('\'', "''")
     );
-    match sqlx::query(&sql).fetch_one(conn).await {
+    match sqlx::query(AssertSqlSafe(sql.as_str())).fetch_one(conn).await {
         Ok(row) => row
             .try_get::<String, _>(0)
             .ok()
