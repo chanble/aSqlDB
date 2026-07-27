@@ -83,23 +83,39 @@ Manage all three major database types from one interface:
 
 ### From Source
 
+#### Development Mode
+
 ```bash
 # Clone the repository
 git clone https://github.com/chanble/aSqlDB.git
 # git clone https://gitee.com/chanble/aSqlDB.git
 cd aSqlDB
 
-# Build the frontend
+# Start the backend server first
+cargo run -p asql-web
+
+# Then in another terminal, start the frontend dev server
 cd asql-web/frontend
 npm install
-npm run build
-cd ../..
-
-# Run the server
-cargo run -p asql-web
+npm run dev
 ```
 
-The server starts on `http://0.0.0.0:5580` by default. Open it in your browser to get started.
+The server starts on `http://0.0.0.0:5173` by default. Open it in your browser to get started.
+
+#### Build & Run
+
+```bash
+# Clone the repository
+git clone https://github.com/chanble/aSqlDB.git
+# git clone https://gitee.com/chanble/aSqlDB.git
+cd aSqlDB
+
+# Build the release binary (automatically builds the frontend)
+cargo build --release -p asql-web
+
+# Run
+./target/release/asql-web
+```
 
 ### Using the Desktop App
 

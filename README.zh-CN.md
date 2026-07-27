@@ -82,22 +82,37 @@ aSqlDB是一个开源数据库管理工具，提供**统一的 Web 界面**来�
 
 ### 从源码运行
 
+#### 开发模式
+
 ```bash
 # 克隆仓库
 git clone https://github.com/anomalyco/aSqlDB.git
 cd aSqlDB
 
-# 构建前端
+# 首先启动后端服务器
+cargo run -p asql-web
+
+# 然后在另一个终端启动前端开发服务器
 cd asql-web/frontend
 npm install
-npm run build
-cd ../..
-
-# 启动服务器
-cargo run -p asql-web
+npm run dev
 ```
 
-服务器默认启动在 `http://0.0.0.0:5580`，在浏览器中打开即可开始使用。
+服务器默认启动在 `http://0.0.0.0:5173`，在浏览器中打开即可开始使用。
+
+#### 构建运行
+
+```bash
+# 克隆仓库
+git clone https://github.com/anomalyco/aSqlDB.git
+cd aSqlDB
+
+# 构建发布版本（自动构建前端）
+cargo build --release -p asql-web
+
+# 运行
+./target/release/asql-web
+```
 
 ### 使用桌面应用
 
