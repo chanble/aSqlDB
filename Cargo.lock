@@ -189,7 +189,6 @@ version = "0.1.0"
 dependencies = [
  "asql-backend",
  "asql-query",
- "asql-types",
  "axum",
  "clap",
  "serde",
