@@ -9,7 +9,6 @@ license = "MIT"
 # Internal crates
 asql-backend = { path = "../asql-backend" }
 asql-query = { path = "../asql-query" }
-asql-types = { path = "../asql-types" }
 
 strum = "0.26"
 clap = { version = "4", features = ["derive", "env"] }

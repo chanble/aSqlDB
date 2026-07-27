@@ -19,7 +19,7 @@ pub use asql_dsl::introspection::{
     TableNameMatch, TablesIntrospection, UsersIntrospection,
 };
 pub use asql_dsl::{OrderBy, WhereBuilder};
-pub use asql_types::{ColumnExtra, ColumnType, EnumType, FloatType, IntType, StringType};
+pub use asql_types::{parse_column_type, ColumnExtra, ColumnType, EnumType, FloatType, IntType, StringType};
 
 // ─── Re-exports: asql-core ───────────────────────────────────────────
 pub use asql_core::db_manager::{DatabaseType, DbManager, Pool};

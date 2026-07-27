@@ -13,10 +13,10 @@ use tokio_stream::StreamExt;
 
 use asql_backend::BackendHandle;
 use asql_query::{
-    get_suggestions, AlterTableBuilder, ColumnDef, ColumnTarget, CreateTableBuilder, DataFormat,
-    DatabaseOption, DatabaseType, DbSchemaProvider, DeleteBuilder, Dialect, ExportBuilder,
-    ExportTable, ExportTableDef, IndexType, InsertBuilder, MySql, OrderBy, PostgreSql,
-    QueryBuilder, SelectBuilder, Sqlite, SuggestionKind, TableNameMatch, TableOption,
+    get_suggestions, parse_column_type, AlterTableBuilder, ColumnDef, ColumnExtra, ColumnTarget,
+    CreateTableBuilder, DataFormat, DatabaseOption, DatabaseType, DbSchemaProvider, DeleteBuilder,
+    Dialect, ExportBuilder, ExportTable, ExportTableDef, IndexType, InsertBuilder, MySql, OrderBy,
+    PostgreSql, QueryBuilder, SelectBuilder, Sqlite, SuggestionKind, TableNameMatch, TableOption,
     UpdateBuilder, WhereBuilder,
 };
 
@@ -431,7 +431,7 @@ fn column_def(b: &ColumnDefBody) -> ColumnDef {
         } else {
             s
         };
-        asql_types::parse_column_type(&s)
+        parse_column_type(&s)
     };
     ColumnDef {
         name: b.name.clone(),
@@ -439,7 +439,7 @@ fn column_def(b: &ColumnDefBody) -> ColumnDef {
         nullable: Some(b.nullable),
         default_value: b.default.clone(),
         comment: b.comment.clone(),
-        extra: asql_types::ColumnExtra {
+        extra: ColumnExtra {
             auto_increment: b.auto_increment,
             ..Default::default()
         },
