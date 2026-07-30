@@ -7,7 +7,7 @@ license = "MIT"
 
 [dependencies]
 asql-dsl = "0.1.0"
-asql-core = "0.1.0"
+asql-core = "0.2.0"
 asql-sql = "0.1.0"
 asql-types = "0.1.0"
 serde = { version = "1", features = ["derive"] }
