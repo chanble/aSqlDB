@@ -22,7 +22,8 @@ pub use asql_dsl::{OrderBy, WhereBuilder};
 pub use asql_types::{parse_column_type, ColumnExtra, ColumnType, EnumType, FloatType, IntType, StringType};
 
 // ─── Re-exports: asql-core ───────────────────────────────────────────
-pub use asql_core::db_manager::{DatabaseType, DbManager, Pool};
+pub use asql_core::db_executor::split_sql_statements;
+pub use asql_core::db_manager::{BatchProgress, DatabaseType, DbManager, Pool};
 pub use asql_core::export::{
     ColumnTarget, DataFormat, DatabaseOption, ExportConfig, ExportReceiver, TableDef, TableOption,
     TableTarget,
@@ -2041,12 +2042,15 @@ impl QueryBuilder {
         &self,
         conn: &str,
         sql: &str,
+        stop_on_error: bool,
     ) -> Pin<Box<dyn Future<Output = Vec<Result<DbSuccessResult, DbError>>> + Send + '_>> {
         let dm = self.db_manager.clone();
         let conn = conn.to_string();
         let sql = sql.to_string();
         Box::pin(
-            async move { DbManager::execute_sql_batch_send(dm.clone(), &conn, &sql, false).await },
+            async move {
+                DbManager::execute_sql_batch_send(dm.clone(), &conn, &sql, stop_on_error).await
+            },
         )
     }
 }

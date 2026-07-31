@@ -96,7 +96,7 @@ impl Backend {
         sql: &str,
     ) -> Vec<Result<DbSuccessResult, DbError>> {
         self.query_builder
-            .execute_raw_batch(connection, sql)
+            .execute_raw_batch(connection, sql, false)
             .await
     }
 

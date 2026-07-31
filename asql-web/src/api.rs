@@ -1,23 +1,26 @@
-﻿use std::sync::Arc;
+﻿use std::collections::HashMap;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use axum::body::Body;
 use axum::extract::ws::{Message, WebSocket, WebSocketUpgrade};
-use axum::extract::{Path, Query, State};
+use axum::extract::{Multipart, Path, Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::routing::{delete, get, patch, post};
 use axum::{Json, Router};
-use serde::Deserialize;
+use axum::extract::DefaultBodyLimit;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio_stream::StreamExt;
 
 use asql_backend::BackendHandle;
 use asql_query::{
-    get_suggestions, parse_column_type, AlterTableBuilder, ColumnDef, ColumnExtra, ColumnTarget,
-    CreateTableBuilder, DataFormat, DatabaseOption, DatabaseType, DbSchemaProvider, DeleteBuilder,
-    Dialect, ExportBuilder, ExportTable, ExportTableDef, IndexType, InsertBuilder, MySql, OrderBy,
-    PostgreSql, QueryBuilder, SelectBuilder, Sqlite, SuggestionKind, TableNameMatch, TableOption,
-    UpdateBuilder, WhereBuilder,
+    get_suggestions, parse_column_type, split_sql_statements, AlterTableBuilder, ColumnDef,
+    ColumnExtra, ColumnTarget, CreateTableBuilder, DataFormat, DatabaseOption, DatabaseType,
+    DbManager, DbSchemaProvider, DeleteBuilder, Dialect, ExportBuilder, ExportTable, ExportTableDef,
+    IndexType, InsertBuilder, MySql, OrderBy, PostgreSql, QueryBuilder, SelectBuilder, Sqlite,
+    SuggestionKind, TableNameMatch, TableOption, UpdateBuilder, WhereBuilder,
 };
 
 type AppState = BackendHandle;
@@ -97,6 +100,8 @@ struct CompletionRequestMsg {
 #[derive(Deserialize)]
 struct QueryBody {
     sql: String,
+    #[serde(default)]
+    stop_on_error: bool,
 }
 
 #[derive(Deserialize)]
@@ -392,6 +397,91 @@ struct TablesBody {
     tables: Vec<String>,
 }
 
+#[derive(Deserialize)]
+struct ImportPreviewBody {
+    file_path: String,
+}
+
+#[derive(Deserialize)]
+struct ImportExecuteBody {
+    file_path: String,
+    #[serde(default)]
+    file_name: Option<String>,
+    #[serde(default)]
+    stop_on_error: bool,
+    #[serde(default)]
+    database: Option<String>,
+    #[serde(default)]
+    single_transaction: bool,
+}
+
+#[derive(Deserialize)]
+struct ImportTaskPath {
+    task_id: String,
+}
+
+// ─── Import tasks (background execution + polling) ──────────────────
+
+#[derive(Clone, Serialize)]
+struct ImportTask {
+    id: String,
+    status: String, // "running" | "completed" | "failed" | "cancelled"
+    total: usize,
+    current: usize,
+    succeeded: usize,
+    failed: usize,
+    errors: Vec<Value>,
+    duration_ms: u64,
+    created_at: u64,
+    finished_at: Option<u64>,
+    error: Option<String>,
+    cancel_requested: bool,
+    connection: String,
+    database: Option<String>,
+    file_name: String,
+    file_path: String,
+    total_lines: usize,
+    file_size: usize,
+    preview_head: String,
+    preview_tail: String,
+    preview_omitted: usize,
+    stop_on_error: bool,
+    single_transaction: bool,
+}
+
+fn import_tasks() -> &'static Mutex<HashMap<String, ImportTask>> {
+    static IMPORT_TASKS: OnceLock<Mutex<HashMap<String, ImportTask>>> = OnceLock::new();
+    IMPORT_TASKS.get_or_init(|| Mutex::new(HashMap::new()))
+}
+
+static IMPORT_TASK_COUNTER: AtomicU64 = AtomicU64::new(0);
+
+fn update_import_task(
+    tasks: &Mutex<HashMap<String, ImportTask>>,
+    id: &str,
+    f: impl FnOnce(&mut ImportTask),
+) {
+    if let Ok(mut guard) = tasks.lock() {
+        if let Some(task) = guard.get_mut(id) {
+            f(task);
+        }
+    }
+}
+
+fn now_millis() -> u64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as u64)
+        .unwrap_or(0)
+}
+
+fn import_cancel_requested(tasks: &Mutex<HashMap<String, ImportTask>>, id: &str) -> bool {
+    tasks
+        .lock()
+        .map(|g| g.get(id).map(|t| t.cancel_requested).unwrap_or(false))
+        .unwrap_or(false)
+}
+
 // ─── Query params ──────────────────────────────────────────────────
 
 #[derive(Deserialize)]
@@ -515,6 +605,15 @@ pub fn build_router() -> Router<AppState> {
         .route("/connections/{name}/charsets", get(charsets_handler))
         .route("/connections/{name}/functions", get(functions_handler))
         .route("/connections/{name}/export", post(export_data_handler))
+        .route("/connections/{name}/import/preview", post(import_preview))
+        .route("/connections/{name}/import", post(import_execute))
+        .route("/import/tasks", get(import_tasks_list))
+        .route("/import/tasks/{task_id}", get(import_task_detail))
+        .route("/import/tasks/{task_id}/cancel", post(import_cancel))
+        .route(
+            "/connections/{name}/import/upload",
+            post(upload_import_file).layer(DefaultBodyLimit::max(1024 * 1024 * 1024)),
+        )
         .route(
             "/connections/{name}/databases/{db}/tables",
             get(list_tables).post(create_table_handler),
@@ -703,7 +802,7 @@ async fn execute_query(
         Ok(qb) => qb,
         Err(_) => return Json(json!({"error": "connection not found"})),
     };
-    let results = qb.execute_raw_batch(&p.name, &body.sql).await;
+    let results = qb.execute_raw_batch(&p.name, &body.sql, body.stop_on_error).await;
     let json_results: Vec<Value> = results
         .into_iter()
         .map(|r| match r {
@@ -715,7 +814,372 @@ async fn execute_query(
 }
 
 // ═══════════════════════════════════════════════════════════════════
-//  Databases
+//  Import (server-side file)
+// ═══════════════════════════════════════════════════════════════════
+
+const PREVIEW_LINES: usize = 100;
+
+async fn import_preview(
+    State(bk): State<AppState>,
+    Path(p): Path<ConnPath>,
+    Json(body): Json<ImportPreviewBody>,
+) -> (StatusCode, Json<Value>) {
+    let _ = match create_qb(&bk, &p.name).await {
+        Ok(qb) => qb,
+        Err(e) => return e,
+    };
+    let content = match tokio::fs::read_to_string(&body.file_path).await {
+        Ok(c) => c,
+        Err(e) => return err_json(format!("Failed to read file: {}", e)),
+    };
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+    let file_size = content.len();
+    let (head, tail) = if total_lines <= PREVIEW_LINES * 2 {
+        (content.clone(), String::new())
+    } else {
+        let head = lines[..PREVIEW_LINES].join("\n");
+        let tail = lines[total_lines - PREVIEW_LINES..].join("\n");
+        (head, tail)
+    };
+    ok_json(json!({
+        "total_lines": total_lines,
+        "file_size": file_size,
+        "head": head,
+        "tail": tail,
+        "omitted": total_lines.saturating_sub(PREVIEW_LINES * 2),
+    }))
+}
+
+async fn import_execute(
+    State(bk): State<AppState>,
+    Path(p): Path<ConnPath>,
+    Json(body): Json<ImportExecuteBody>,
+) -> (StatusCode, Json<Value>) {
+    let dm = bk.db_manager().await;
+    if dm.get_connection_url(&p.name).await.is_none() {
+        return err_json(format!("Connection '{}' not found", p.name));
+    }
+    if tokio::fs::metadata(&body.file_path).await.is_err() {
+        return err_json(format!("File not found: {}", body.file_path));
+    }
+
+    let task_id = format!(
+        "import_{}_{}",
+        now_millis(),
+        IMPORT_TASK_COUNTER.fetch_add(1, Ordering::Relaxed)
+    );
+    let created_at = now_millis();
+    let file_name = body.file_name.clone().unwrap_or_else(|| {
+        std::path::Path::new(&body.file_path)
+            .file_name()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| body.file_path.clone())
+    });
+    let task = ImportTask {
+        id: task_id.clone(),
+        status: "running".to_string(),
+        total: 0,
+        current: 0,
+        succeeded: 0,
+        failed: 0,
+        errors: Vec::new(),
+        duration_ms: 0,
+        created_at,
+        finished_at: None,
+        error: None,
+        cancel_requested: false,
+        connection: p.name.clone(),
+        database: body.database.clone(),
+        file_name,
+        file_path: body.file_path.clone(),
+        total_lines: 0,
+        file_size: 0,
+        preview_head: String::new(),
+        preview_tail: String::new(),
+        preview_omitted: 0,
+        stop_on_error: body.stop_on_error,
+        single_transaction: body.single_transaction,
+    };
+    {
+        let tasks = import_tasks();
+        let mut guard = tasks.lock().unwrap();
+        guard.retain(|_, t| t.status == "running" || created_at.saturating_sub(t.created_at) < 3600_000);
+        guard.insert(task_id.clone(), task);
+    }
+
+    let conn_name = p.name.clone();
+    let file_path = body.file_path.clone();
+    let stop_on_error = body.stop_on_error;
+    let database = body.database.clone();
+    let single_transaction = body.single_transaction;
+    let spawn_id = task_id.clone();
+    tokio::spawn(async move {
+        run_import_task(
+            dm,
+            conn_name,
+            database,
+            file_path,
+            stop_on_error,
+            single_transaction,
+            spawn_id,
+        )
+        .await;
+    });
+
+    ok_json(json!({ "task_id": task_id }))
+}
+
+async fn run_import_task(
+    dm: Arc<DbManager>,
+    conn: String,
+    database: Option<String>,
+    file_path: String,
+    stop_on_error: bool,
+    single_transaction: bool,
+    task_id: String,
+) {
+    let tasks = import_tasks();
+    let start = std::time::Instant::now();
+
+    let content = match tokio::fs::read_to_string(&file_path).await {
+        Ok(c) => c,
+        Err(e) => {
+            tracing::error!("[IMPORT TASK {}] read failed: {}", task_id, e);
+            update_import_task(&tasks, &task_id, |t| {
+                t.status = "failed".to_string();
+                t.error = Some(format!("Failed to read file: {}", e));
+            });
+            return;
+        }
+    };
+    tracing::info!(
+        "[IMPORT TASK {}] read file ({} bytes) in {:?}",
+        task_id,
+        content.len(),
+        start.elapsed()
+    );
+    let lines: Vec<&str> = content.lines().collect();
+    let total_lines = lines.len();
+    let file_size = content.len();
+    let (preview_head, preview_tail, preview_omitted) = if total_lines <= PREVIEW_LINES * 2 {
+        (content.clone(), String::new(), 0usize)
+    } else {
+        (
+            lines[..PREVIEW_LINES].join("\n"),
+            lines[total_lines - PREVIEW_LINES..].join("\n"),
+            total_lines - PREVIEW_LINES * 2,
+        )
+    };
+    update_import_task(&tasks, &task_id, |t| {
+        t.total_lines = total_lines;
+        t.file_size = file_size;
+        t.preview_head = preview_head;
+        t.preview_tail = preview_tail;
+        t.preview_omitted = preview_omitted;
+    });
+    let split_start = std::time::Instant::now();
+    let statements: Vec<String> = match tokio::task::spawn_blocking(move || {
+        split_sql_statements(&content)
+            .iter()
+            .map(|s| s.to_string())
+            .collect()
+    })
+    .await
+    {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("[IMPORT TASK {}] split failed: {}", task_id, e);
+            update_import_task(&tasks, &task_id, |t| {
+                t.status = "failed".to_string();
+                t.error = Some(format!("Failed to split SQL: {}", e));
+            });
+            return;
+        }
+    };
+    tracing::info!(
+        "[IMPORT TASK {}] split into {} statements in {:?}",
+        task_id,
+        statements.len(),
+        split_start.elapsed()
+    );
+
+    let total = statements.len();
+    update_import_task(&tasks, &task_id, |t| t.total = total);
+
+    if import_cancel_requested(&tasks, &task_id) {
+        update_import_task(&tasks, &task_id, |t| {
+            t.status = "cancelled".to_string();
+            t.finished_at = Some(now_millis());
+        });
+        tracing::info!("[IMPORT TASK {}] cancelled before execution", task_id);
+        return;
+    }
+
+    let mut last_error_count = 0usize;
+    let progress_task_id = task_id.clone();
+    let progress = DbManager::execute_sql_batch_owned_send(
+        dm,
+        &conn,
+        database,
+        statements,
+        stop_on_error,
+        true,
+        single_transaction,
+        move |p| {
+            let cancel = import_cancel_requested(&tasks, &progress_task_id);
+            update_import_task(&tasks, &progress_task_id, |t| {
+                t.current = p.done;
+                t.succeeded = p.succeeded;
+                t.failed = p.failed;
+                for (idx, err) in p.errors.iter().skip(last_error_count) {
+                    t.errors.push(json!({
+                        "index": *idx,
+                        "error": err,
+                    }));
+                }
+                last_error_count = p.errors.len();
+            });
+            !cancel
+        },
+    )
+    .await;
+
+    if let Some(fatal) = progress.fatal_error {
+        update_import_task(&tasks, &task_id, |t| {
+            t.status = "failed".to_string();
+            t.error = Some(fatal.clone());
+            t.finished_at = Some(now_millis());
+        });
+        tracing::error!("[IMPORT TASK {}] failed: {}", task_id, fatal);
+        return;
+    }
+
+    let status = if progress.cancelled {
+        "cancelled"
+    } else {
+        "completed"
+    };
+    update_import_task(&tasks, &task_id, |t| {
+        t.status = status.to_string();
+        t.duration_ms = start.elapsed().as_millis() as u64;
+        t.finished_at = Some(now_millis());
+    });
+    tracing::info!(
+        "[IMPORT TASK {}] {}: {} succeeded, {} failed, total {:?}",
+        task_id,
+        status,
+        progress.succeeded,
+        progress.failed,
+        start.elapsed()
+    );
+}
+
+async fn import_tasks_list(State(_bk): State<AppState>) -> (StatusCode, Json<Value>) {
+    let tasks = import_tasks();
+    let guard = tasks.lock().unwrap();
+    let mut list: Vec<Value> = guard
+        .values()
+        .map(|t| {
+            json!({
+                "id": t.id,
+                "connection": t.connection,
+                "database": t.database,
+                "file_name": t.file_name,
+                "file_path": t.file_path,
+                "status": t.status,
+                "total": t.total,
+                "total_lines": t.total_lines,
+                "file_size": t.file_size,
+                "current": t.current,
+                "succeeded": t.succeeded,
+                "failed": t.failed,
+                "error_count": t.errors.len(),
+                "duration_ms": t.duration_ms,
+                "created_at": t.created_at,
+                "finished_at": t.finished_at,
+                "stop_on_error": t.stop_on_error,
+                "single_transaction": t.single_transaction,
+            })
+        })
+        .collect();
+    list.sort_by_key(|v| v["created_at"].as_u64().unwrap_or(0));
+    list.reverse();
+    list.truncate(50);
+    ok_json(json!({ "tasks": list }))
+}
+
+async fn import_task_detail(
+    State(_bk): State<AppState>,
+    Path(p): Path<ImportTaskPath>,
+) -> (StatusCode, Json<Value>) {
+    let tasks = import_tasks();
+    match tasks.lock().unwrap().get(&p.task_id) {
+        Some(task) => ok_json(json!(task)),
+        None => err_json("Import task not found"),
+    }
+}
+
+async fn import_cancel(
+    State(_bk): State<AppState>,
+    Path(p): Path<ImportTaskPath>,
+) -> (StatusCode, Json<Value>) {
+    let tasks = import_tasks();
+    let mut guard = tasks.lock().unwrap();
+    match guard.get_mut(&p.task_id) {
+        Some(t) if t.status == "running" => {
+            t.cancel_requested = true;
+            ok_json(json!({ "ok": true }))
+        }
+        Some(_) => err_json("Task is not running"),
+        None => err_json("Import task not found"),
+    }
+}
+
+async fn upload_import_file(
+    State(bk): State<AppState>,
+    Path(p): Path<ConnPath>,
+    mut multipart: Multipart,
+) -> (StatusCode, Json<Value>) {
+    let _ = match create_qb(&bk, &p.name).await {
+        Ok(qb) => qb,
+        Err(e) => return e,
+    };
+    let field = match multipart.next_field().await {
+        Ok(Some(f)) => f,
+        Ok(None) => return err_json("No file uploaded"),
+        Err(e) => return err_json(format!("Multipart error: {}", e)),
+    };
+    let original_name = field
+        .file_name()
+        .unwrap_or("upload.sql")
+        .to_string();
+    let data = match field.bytes().await {
+        Ok(d) => d.to_vec(),
+        Err(e) => return err_json(format!("Failed to read file body: {}", e)),
+    };
+    let file_size = data.len();
+    let timestamp = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+    let temp_path = std::env::temp_dir().join(format!("asql_import_{}.sql", timestamp));
+    if let Err(e) = tokio::fs::write(&temp_path, &data).await {
+        return err_json(format!("Failed to save temp file: {}", e));
+    }
+    tracing::info!(
+        "[IMPORT UPLOAD] {} -> {} ({} bytes)",
+        original_name,
+        temp_path.display(),
+        file_size
+    );
+    ok_json(json!({
+        "file_path": temp_path.to_string_lossy(),
+        "original_name": original_name,
+        "file_size": file_size,
+    }))
+}
+
 // ═══════════════════════════════════════════════════════════════════
 
 async fn list_databases(

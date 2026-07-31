@@ -41,12 +41,13 @@ enum SplitState {
     BlockComment,
 }
 
-pub(crate) fn split_sql_statements(sql: &str) -> Vec<&str> {
+pub fn split_sql_statements(sql: &str) -> Vec<&str> {
     let chars: Vec<char> = sql.chars().collect();
     let len = chars.len();
     let mut state = SplitState::Normal;
     let mut statements = Vec::new();
-    let mut stmt_start = 0;
+    let mut stmt_start = 0usize;
+    let mut byte_pos = 0usize;
 
     let mut i = 0;
     while i < len {
@@ -58,29 +59,31 @@ pub(crate) fn split_sql_statements(sql: &str) -> Vec<&str> {
                 '`' => state = SplitState::Backtick,
                 '-' if i + 1 < len && chars[i + 1] == '-' => {
                     state = SplitState::LineComment;
-                    i += 1;
+                    advance2(&chars, &mut i, &mut byte_pos);
+                    continue;
                 }
                 '/' if i + 1 < len && chars[i + 1] == '*' => {
                     state = SplitState::BlockComment;
-                    i += 1;
+                    advance2(&chars, &mut i, &mut byte_pos);
+                    continue;
                 }
                 '#' => state = SplitState::LineComment,
                 ';' => {
-                    let stmt = sql[stmt_start..char_end(&chars, i)].trim();
+                    let stmt = sql[stmt_start..byte_pos].trim();
                     if !stmt.is_empty() {
                         statements.push(stmt);
                     }
-                    stmt_start = char_end(&chars, i);
+                    stmt_start = byte_pos + c.len_utf8();
                 }
                 _ => {}
             },
             SplitState::SingleQuote => {
                 if c == '\'' {
                     if i + 1 < len && chars[i + 1] == '\'' {
-                        i += 1;
-                    } else {
-                        state = SplitState::Normal;
+                        advance2(&chars, &mut i, &mut byte_pos);
+                        continue;
                     }
+                    state = SplitState::Normal;
                 }
             }
             SplitState::DoubleQuote => {
@@ -101,10 +104,12 @@ pub(crate) fn split_sql_statements(sql: &str) -> Vec<&str> {
             SplitState::BlockComment => {
                 if c == '*' && i + 1 < len && chars[i + 1] == '/' {
                     state = SplitState::Normal;
-                    i += 1;
+                    advance2(&chars, &mut i, &mut byte_pos);
+                    continue;
                 }
             }
         }
+        byte_pos += c.len_utf8();
         i += 1;
     }
 
@@ -118,8 +123,11 @@ pub(crate) fn split_sql_statements(sql: &str) -> Vec<&str> {
     statements
 }
 
-fn char_end(chars: &[char], i: usize) -> usize {
-    chars[..=i].iter().map(|c| c.len_utf8()).sum()
+fn advance2(chars: &[char], i: &mut usize, byte_pos: &mut usize) {
+    *byte_pos += chars[*i].len_utf8();
+    *i += 1;
+    *byte_pos += chars[*i].len_utf8();
+    *i += 1;
 }
 
 fn strip_leading_comments(sql: &str) -> &str {
@@ -286,6 +294,79 @@ mod tests {
             classify_sql("/* a */ -- b\nWITH cte AS (SELECT 1) SELECT * FROM cte"),
             SqlKind::Query
         ));
+    }
+
+    // ─── split_sql_statements ───────────────────────────────────────────
+
+    #[test]
+    fn test_split_sql_statements_basic() {
+        let stmts = split_sql_statements("SELECT 1; SELECT 2;");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "SELECT 1");
+        assert_eq!(stmts[1], "SELECT 2");
+    }
+
+    #[test]
+    fn test_split_sql_statements_no_trailing_semicolon() {
+        let stmts = split_sql_statements("INSERT INTO t VALUES (1); UPDATE t SET x = 2");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[1], "UPDATE t SET x = 2");
+    }
+
+    #[test]
+    fn test_split_sql_statements_semicolon_in_quotes() {
+        let stmts = split_sql_statements("INSERT INTO t VALUES ('a;b'); SELECT 1");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "INSERT INTO t VALUES ('a;b')");
+    }
+
+    #[test]
+    fn test_split_sql_statements_escaped_quote() {
+        let stmts = split_sql_statements("INSERT INTO t VALUES ('it''s; ok'); SELECT 1");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "INSERT INTO t VALUES ('it''s; ok')");
+    }
+
+    #[test]
+    fn test_split_sql_statements_backtick_and_double_quote() {
+        let stmts = split_sql_statements("SELECT `a;b` FROM t; SELECT \"x;y\"");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "SELECT `a;b` FROM t");
+        assert_eq!(stmts[1], "SELECT \"x;y\"");
+    }
+
+    #[test]
+    fn test_split_sql_statements_comments() {
+        let sql = "-- line; comment\nSELECT 1; /* block; comment */ SELECT 2; # hash; comment\nSELECT 3";
+        let stmts = split_sql_statements(sql);
+        assert_eq!(stmts.len(), 3);
+        assert_eq!(stmts[0], "-- line; comment\nSELECT 1");
+        assert_eq!(stmts[1], "/* block; comment */ SELECT 2");
+        assert_eq!(stmts[2], "# hash; comment\nSELECT 3");
+    }
+
+    #[test]
+    fn test_split_sql_statements_empty_and_whitespace() {
+        let stmts = split_sql_statements("  ;  \n; ;  ");
+        assert_eq!(stmts.len(), 0);
+    }
+
+    #[test]
+    fn test_split_sql_statements_unicode() {
+        let stmts = split_sql_statements("SELECT '中文;测试'; SELECT '😀;emoji'");
+        assert_eq!(stmts.len(), 2);
+        assert_eq!(stmts[0], "SELECT '中文;测试'");
+        assert_eq!(stmts[1], "SELECT '😀;emoji'");
+    }
+
+    #[test]
+    fn test_split_sql_statements_large_linear() {
+        let mut sql = String::new();
+        for _ in 0..100_000 {
+            sql.push_str("INSERT INTO t VALUES (1);");
+        }
+        let stmts = split_sql_statements(&sql);
+        assert_eq!(stmts.len(), 100_000);
     }
 
     // ─── SQLite in-memory helpers ────────────────────────────────────────

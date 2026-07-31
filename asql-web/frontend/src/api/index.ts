@@ -69,10 +69,10 @@ export const api = {
       method: 'POST',
     }),
 
-  executeQuery: (connection: string, sql: string) =>
+  executeQuery: (connection: string, sql: string, stopOnError = false) =>
     request<QueryResultItem[]>(`/connections/${enc(connection)}/query`, {
       method: 'POST',
-      body: JSON.stringify({ sql }),
+      body: JSON.stringify({ sql, stop_on_error: stopOnError }),
     }),
 
   listDatabases: (connection: string) =>
@@ -320,4 +320,97 @@ export const api = {
 
   charsets: (connection: string) =>
     request<Array<{ charset: string; collations: string[] }>>(`/connections/${enc(connection)}/charsets`),
+
+  importPreview: (connection: string, filePath: string) =>
+    request<{ total_lines: number; file_size: number; head: string; tail: string; omitted: number }>(
+      `/connections/${enc(connection)}/import/preview`,
+      { method: 'POST', body: JSON.stringify({ file_path: filePath }) },
+    ),
+
+  importServerFile: (
+    connection: string,
+    filePath: string,
+    options?: { stopOnError?: boolean; database?: string; singleTransaction?: boolean; fileName?: string },
+  ) =>
+    request<{ task_id: string }>(`/connections/${enc(connection)}/import`, {
+      method: 'POST',
+      body: JSON.stringify({
+        file_path: filePath,
+        stop_on_error: options?.stopOnError ?? false,
+        single_transaction: options?.singleTransaction ?? false,
+        database: options?.database,
+        file_name: options?.fileName,
+      }),
+    }),
+
+  importStatus: (taskId: string) =>
+    request<{
+      id: string
+      status: 'running' | 'completed' | 'failed' | 'cancelled'
+      total: number
+      current: number
+      succeeded: number
+      failed: number
+      duration_ms: number
+      error: string | null
+      errors: Array<{ index: number; error: string }>
+      connection: string
+      database: string | null
+      file_name: string
+      file_path: string
+      total_lines: number
+      file_size: number
+      preview_head: string
+      preview_tail: string
+      preview_omitted: number
+      stop_on_error: boolean
+      single_transaction: boolean
+      created_at: number
+      finished_at: number | null
+    }>(`/import/tasks/${enc(taskId)}`),
+
+  listImportTasks: () =>
+    request<{
+      tasks: Array<{
+        id: string
+        connection: string
+        database: string | null
+        file_name: string
+        file_path: string
+        status: 'running' | 'completed' | 'failed' | 'cancelled'
+        total: number
+        total_lines: number
+        file_size: number
+        current: number
+        succeeded: number
+        failed: number
+        error_count: number
+        duration_ms: number
+        created_at: number
+        finished_at: number | null
+        stop_on_error: boolean
+        single_transaction: boolean
+      }>
+    }>(`/import/tasks`),
+
+  cancelImport: (taskId: string) =>
+    request<{ ok: boolean }>(`/import/tasks/${enc(taskId)}/cancel`, { method: 'POST' }),
+
+  uploadImportFile: async (connection: string, file: File) => {
+    const formData = new FormData()
+    formData.append('file', file)
+    const res = await fetch(`${BASE}/connections/${enc(connection)}/import/upload`, {
+      method: 'POST',
+      body: formData,
+    })
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}))
+      throw new Error(body.error || `HTTP ${res.status}`)
+    }
+    return res.json() as Promise<{
+      file_path: string
+      original_name: string
+      file_size: number
+    }>
+  },
 }

@@ -13,6 +13,7 @@ import PrivilegesPage from '../views/PrivilegesPage.vue'
 import PrivilegesListPage from '../views/PrivilegesListPage.vue'
 import IndexesPage from '../views/IndexesPage.vue'
 import ExportPage from '../views/ExportPage.vue'
+import ImportPage from '../views/ImportPage.vue'
 import DatabaseListPage from '../views/DatabaseListPage.vue'
 import CreateDatabasePage from '../views/CreateDatabasePage.vue'
 import InsertDataPage from '../views/InsertDataPage.vue'
@@ -93,6 +94,11 @@ const routes = [
     path: '/export/:connection/:db',
     name: 'Export',
     component: ExportPage,
+  },
+  {
+    path: '/import/:connection/:db',
+    name: 'Import',
+    component: ImportPage,
   },
   {
     path: '/privileges/:connection',

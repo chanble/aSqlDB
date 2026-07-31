@@ -6,7 +6,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Instant;
 
-use sqlx::Connection;
+use sqlx::{AssertSqlSafe, Connection};
 use tokio::sync::{Mutex, RwLock};
 
 use crate::db_executor;
@@ -23,6 +23,155 @@ pub enum Pool {
     MySql(MySqlPool),
     Postgres(PgPool),
     Sqlite(SqlitePool),
+}
+
+/// Cumulative progress of an owned batch execution.
+#[derive(Default, Clone)]
+pub struct BatchProgress {
+    pub done: usize,
+    pub succeeded: usize,
+    pub failed: usize,
+    pub errors: Vec<(usize, String)>,
+    pub fatal_error: Option<String>,
+    pub cancelled: bool,
+}
+
+async fn run_batch_mysql(
+    conn: &mut sqlx::MySqlConnection,
+    statements: &[String],
+    stop_on_error: bool,
+    single_transaction: bool,
+    progress: &mut BatchProgress,
+    on_progress: &mut (impl FnMut(&BatchProgress) -> bool + Send),
+) {
+    if single_transaction {
+        if let Err(e) = sqlx::raw_sql(AssertSqlSafe("SET autocommit=0"))
+            .execute(&mut *conn)
+            .await
+        {
+            progress.fatal_error = Some(format!("Failed to set autocommit=0: {}", e));
+            return;
+        }
+    }
+    for (i, stmt) in statements.iter().enumerate() {
+        match db_executor::execute_sql_on_mysql_conn(stmt, conn).await {
+            Ok(_) => progress.succeeded += 1,
+            Err(e) => {
+                progress.failed += 1;
+                progress.errors.push((i, format!("{}", e)));
+                if stop_on_error {
+                    progress.done = i + 1;
+                    on_progress(progress);
+                    break;
+                }
+            }
+        }
+        progress.done = i + 1;
+        if !on_progress(progress) {
+            progress.cancelled = true;
+            break;
+        }
+    }
+    if single_transaction {
+        let finalize = if (stop_on_error && progress.failed > 0) || progress.cancelled {
+            "ROLLBACK"
+        } else {
+            "COMMIT"
+        };
+        if let Err(e) = sqlx::raw_sql(AssertSqlSafe(finalize)).execute(&mut *conn).await {
+            progress.fatal_error = Some(format!("Failed to {}: {}", finalize, e));
+        }
+    }
+}
+
+async fn run_batch_pg(
+    conn: &mut sqlx::PgConnection,
+    statements: &[String],
+    stop_on_error: bool,
+    single_transaction: bool,
+    progress: &mut BatchProgress,
+    on_progress: &mut (impl FnMut(&BatchProgress) -> bool + Send),
+) {
+    if single_transaction {
+        if let Err(e) = sqlx::raw_sql(AssertSqlSafe("BEGIN")).execute(&mut *conn).await {
+            progress.fatal_error = Some(format!("Failed to BEGIN: {}", e));
+            return;
+        }
+    }
+    for (i, stmt) in statements.iter().enumerate() {
+        match db_executor::execute_sql_on_pg_conn(stmt, conn).await {
+            Ok(_) => progress.succeeded += 1,
+            Err(e) => {
+                progress.failed += 1;
+                progress.errors.push((i, format!("{}", e)));
+                if stop_on_error {
+                    progress.done = i + 1;
+                    on_progress(progress);
+                    break;
+                }
+            }
+        }
+        progress.done = i + 1;
+        if !on_progress(progress) {
+            progress.cancelled = true;
+            break;
+        }
+    }
+    if single_transaction {
+        let finalize = if (stop_on_error && progress.failed > 0) || progress.cancelled {
+            "ROLLBACK"
+        } else {
+            "COMMIT"
+        };
+        if let Err(e) = sqlx::raw_sql(AssertSqlSafe(finalize)).execute(&mut *conn).await {
+            progress.fatal_error = Some(format!("Failed to {}: {}", finalize, e));
+        }
+    }
+}
+
+async fn run_batch_sqlite(
+    conn: &mut sqlx::SqliteConnection,
+    statements: &[String],
+    stop_on_error: bool,
+    single_transaction: bool,
+    progress: &mut BatchProgress,
+    on_progress: &mut (impl FnMut(&BatchProgress) -> bool + Send),
+) {
+    if single_transaction {
+        if let Err(e) = sqlx::raw_sql(AssertSqlSafe("BEGIN")).execute(&mut *conn).await {
+            progress.fatal_error = Some(format!("Failed to BEGIN: {}", e));
+            return;
+        }
+    }
+    for (i, stmt) in statements.iter().enumerate() {
+        match db_executor::execute_sql_on_sqlite_conn(stmt, conn).await {
+            Ok(_) => progress.succeeded += 1,
+            Err(e) => {
+                progress.failed += 1;
+                progress.errors.push((i, format!("{}", e)));
+                if stop_on_error {
+                    progress.done = i + 1;
+                    on_progress(progress);
+                    break;
+                }
+            }
+        }
+        progress.done = i + 1;
+        if !on_progress(progress) {
+            progress.cancelled = true;
+            break;
+        }
+    }
+    if single_transaction {
+        let finalize = if (stop_on_error && progress.failed > 0) || progress.cancelled {
+            "ROLLBACK"
+        } else {
+            "COMMIT"
+        };
+        if let Err(e) = sqlx::raw_sql(AssertSqlSafe(finalize)).execute(&mut *conn).await {
+            progress.fatal_error = Some(format!("Failed to {}: {}", finalize, e));
+        }
+    }
 }
 
 impl Pool {
@@ -367,6 +516,157 @@ impl DbManager {
         })
     }
 
+    /// Execute an owned list of statements on a single connection, reporting
+    /// progress via `on_progress`. When `new_connection` is true a brand-new
+    /// connection is opened (and closed afterwards), so the pool's main
+    /// connection is not blocked and session state (e.g. `USE database`) cannot
+    /// leak between operations. SQLite always uses the pool connection.
+    pub fn execute_sql_batch_owned_send(
+        dm: Arc<Self>,
+        name: &str,
+        database: Option<String>,
+        statements: Vec<String>,
+        stop_on_error: bool,
+        new_connection: bool,
+        single_transaction: bool,
+        on_progress: impl FnMut(&BatchProgress) -> bool + Send + 'static,
+    ) -> Pin<Box<dyn Future<Output = BatchProgress> + Send>> {
+        let name = name.to_string();
+        Box::pin(async move {
+            tokio::task::spawn_blocking(move || {
+                let rt = tokio::runtime::Handle::current();
+                rt.block_on(dm.run_batch_owned(
+                    &name,
+                    database,
+                    statements,
+                    stop_on_error,
+                    new_connection,
+                    single_transaction,
+                    on_progress,
+                ))
+            })
+            .await
+            .unwrap_or_default()
+        })
+    }
+
+    async fn run_batch_owned(
+        &self,
+        name: &str,
+        database: Option<String>,
+        statements: Vec<String>,
+        stop_on_error: bool,
+        new_connection: bool,
+        single_transaction: bool,
+        mut on_progress: impl FnMut(&BatchProgress) -> bool + Send,
+    ) -> BatchProgress {
+        let mut progress = BatchProgress::default();
+
+        let (url, db_type) = {
+            let pools = self.pools.read().await;
+            match pools.get(name) {
+                Some(item) => (item.config.params.to_url(), item.config.params.db_type()),
+                None => {
+                    progress.fatal_error = Some(format!("Connection '{}' not found", name));
+                    return progress;
+                }
+            }
+        };
+
+        let use_new = new_connection && !matches!(db_type, DatabaseType::Sqlite);
+        if use_new {
+            match db_type {
+                DatabaseType::MySql => {
+                    let mut conn = match sqlx::MySqlConnection::connect(&url).await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            progress.fatal_error =
+                                Some(format!("Failed to open new connection: {}", e));
+                            return progress;
+                        }
+                    };
+                    if let Some(db) = &database {
+                        let escaped = db.replace('`', "``");
+                        let use_sql = format!("USE `{}`", escaped);
+                        if let Err(e) = sqlx::raw_sql(AssertSqlSafe(use_sql.as_str()))
+                            .execute(&mut conn)
+                            .await
+                        {
+                            progress.fatal_error =
+                                Some(format!("Failed to USE database '{}': {}", db, e));
+                            return progress;
+                        }
+                    }
+                    run_batch_mysql(&mut conn, &statements, stop_on_error, single_transaction, &mut progress, &mut on_progress)
+                        .await;
+                }
+                DatabaseType::Postgres => {
+                    if database.is_some() {
+                        tracing::warn!(
+                            "[SQL BATCH] PostgreSQL has no USE statement; ignoring database parameter"
+                        );
+                    }
+                    let mut conn = match sqlx::PgConnection::connect(&url).await {
+                        Ok(c) => c,
+                        Err(e) => {
+                            progress.fatal_error =
+                                Some(format!("Failed to open new connection: {}", e));
+                            return progress;
+                        }
+                    };
+                    run_batch_pg(&mut conn, &statements, stop_on_error, single_transaction, &mut progress, &mut on_progress)
+                        .await;
+                }
+                DatabaseType::Sqlite => unreachable!(),
+            }
+            return progress;
+        }
+
+        if matches!(db_type, DatabaseType::Sqlite) && new_connection {
+            tracing::warn!(
+                "[SQL BATCH] SQLite always uses the pool connection; ignoring new_connection"
+            );
+        }
+        if self.get_pool(name).await.is_none() {
+            if let Err(e) = self.open_connection(name).await {
+                progress.fatal_error = Some(format!("{}", e));
+                return progress;
+            }
+        }
+        let pool = match self.get_pool(name).await {
+            Some(p) => p,
+            None => {
+                progress.fatal_error = Some(format!("Connection '{}' not found", name));
+                return progress;
+            }
+        };
+        match &*pool {
+            Pool::MySql(p) => {
+                let mut conn = p.0.lock().await;
+                run_batch_mysql(&mut *conn, &statements, stop_on_error, single_transaction, &mut progress, &mut on_progress)
+                    .await;
+            }
+            Pool::Postgres(p) => {
+                let mut conn = p.0.lock().await;
+                run_batch_pg(&mut *conn, &statements, stop_on_error, single_transaction, &mut progress, &mut on_progress)
+                    .await;
+            }
+            Pool::Sqlite(p) => {
+                let mut conn = p.0.lock().await;
+                run_batch_sqlite(
+                    &mut *conn,
+                    &statements,
+                    stop_on_error,
+                    single_transaction,
+                    &mut progress,
+                    &mut on_progress,
+                )
+                .await;
+            }
+        }
+        progress
+    }
+
     pub async fn execute_sql(&self, name: &str, sql: &str) -> Result<DbSuccessResult, DbError> {
         if self.get_pool(name).await.is_none() {
             self.open_connection(name).await?;
@@ -394,11 +694,6 @@ impl DbManager {
         sql: &str,
         stop_on_error: bool,
     ) -> Vec<Result<DbSuccessResult, DbError>> {
-        tracing::info!(
-            "[SQL BATCH] [{}] {} statement(s)",
-            name,
-            db_executor::split_sql_statements(sql).len()
-        );
         if self.get_pool(name).await.is_none() {
             if let Err(e) = self.open_connection(name).await {
                 return vec![Err(e)];
@@ -415,6 +710,11 @@ impl DbManager {
         };
 
         let statements = db_executor::split_sql_statements(sql);
+        tracing::info!(
+            "[SQL BATCH] [{}] {} statement(s)",
+            name,
+            statements.len()
+        );
 
         // Lock the single connection once for the entire batch so session state
         // (e.g. `USE database`) is preserved across all statements.

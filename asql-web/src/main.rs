@@ -58,15 +58,14 @@ fn resolve_static_dir(path: &str) -> std::path::PathBuf {
 async fn main() {
     tracing_subscriber::fmt()
         .with_env_filter(
-            EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| EnvFilter::new("info")),
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
         )
         .init();
 
     let cli = Cli::parse();
 
-    let static_dir = std::env::var("ASQL_STATIC_DIR")
-        .unwrap_or_else(|_| "frontend/dist".to_string());
+    let static_dir =
+        std::env::var("ASQL_STATIC_DIR").unwrap_or_else(|_| "frontend/dist".to_string());
     let static_dir = resolve_static_dir(&static_dir);
 
     let config_dir = cli
@@ -79,11 +78,10 @@ async fn main() {
 
     // Load index.html content for SPA fallback (refresh not 404)
     let index_html = Arc::new(
-        std::fs::read_to_string(static_dir.join("index.html"))
-            .unwrap_or_else(|_| {
-                tracing::warn!("index.html not found in static dir, SPA routing will not work");
-                String::new()
-            }),
+        std::fs::read_to_string(static_dir.join("index.html")).unwrap_or_else(|_| {
+            tracing::warn!("index.html not found in static dir, SPA routing will not work");
+            String::new()
+        }),
     );
 
     let not_found_service = service_fn(move |_req: axum::http::Request<axum::body::Body>| {
@@ -114,7 +112,10 @@ async fn main() {
         println!("{}", actual_port);
     }
 
-    tracing::info!("Starting asql-web on http://{}", listener.local_addr().unwrap());
+    tracing::info!(
+        "Starting asql-web on http://{}",
+        listener.local_addr().unwrap()
+    );
     axum::serve(listener, app)
         .with_graceful_shutdown(shutdown_signal())
         .await

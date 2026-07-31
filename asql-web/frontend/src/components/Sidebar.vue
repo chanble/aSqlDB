@@ -227,6 +227,12 @@ function goExport() {
     );
 }
 
+function goImport() {
+    router.push(
+        `/import/${encodeURIComponent(activeConn.value)}/${encodeURIComponent(activeDb.value)}`,
+    );
+}
+
 function goCreateTable() {
     router.push(
         `/create-table/${encodeURIComponent(activeConn.value)}/${encodeURIComponent(activeDb.value)}`,
@@ -327,6 +333,7 @@ function truncate(url: string, max = 30): string {
             <div class="sidebar-nav" v-if="activeDb">
                 <a href="#" @click.prevent="goSql">{{ $t('sidebar.sqlCommand') }}</a>
                 <a href="#" @click.prevent="goExport">{{ $t('sidebar.export') }}</a>
+                <a href="#" @click.prevent="goImport">{{ $t('sidebar.import') }}</a>
                 <a href="#" @click.prevent="goCreateTable">{{ $t('sidebar.createTable') }}</a>
             </div>
 
