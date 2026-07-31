@@ -577,8 +577,8 @@ watch(
           <div class="fieldset-content" style="flex-direction:column;align-items:stretch">
             <div v-for="(sr, i) in searchRows" :key="i" style="display:flex;gap:8px;align-items:center">
               <SearchableSelect v-model="sr.column" :options="[{value:'',label:$t('tableData.selectColumn')},...allColumns.map(c=>({value:c.name,label:c.name}))]" size="small" style="width:120px" @change="onSearchColumnChange(i)" />
-              <SearchableSelect v-model="sr.operator" :options="[{value:'=',label:'='},{value:'>',label:'>'},{value:'<',label:'<'},{value:'>=',label:'>='},{value:'<=',label:'<='},{value:'!=',label:'!='},{value:'LIKE',label:'LIKE'},{value:'NOT LIKE',label:'NOT LIKE'}]" size="small" style="width:100px" />
-              <input v-model="sr.keyword" type="text" style="width:150px" :placeholder="$t('tableData.value')" @keyup.enter="onSearch">
+              <SearchableSelect v-model="sr.operator" :options="[{value:'=',label:'='},{value:'>',label:'>'},{value:'<',label:'<'},{value:'>=',label:'>='},{value:'<=',label:'<='},{value:'!=',label:'!='},{value:'LIKE',label:'LIKE'},{value:'NOT LIKE',label:'NOT LIKE'},{value:'IN',label:'IN'},{value:'NOT IN',label:'NOT IN'}]" size="small" style="width:100px" />
+              <input v-model="sr.keyword" type="text" style="width:150px" :placeholder="(sr.operator === 'IN' || sr.operator === 'NOT IN') ? 'v1, v2, v3' : $t('tableData.value')" @keyup.enter="onSearch">
             </div>
           </div>
         </fieldset>
