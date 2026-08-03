@@ -115,6 +115,44 @@ impl DbSchemaProvider {
 
     async fn fetch_columns(&self, table: &str) -> Vec<(String, String)> {
         let db = self.db.as_deref();
+
+        // Validate the table actually exists before hitting the DB with
+        // SHOW FULL COLUMNS — partial/unknown table names would otherwise
+        // produce noisy 1146 errors in the log.
+        {
+            let cache = self.tables_cache.read().await;
+            let need_fetch = cache
+                .as_ref()
+                .map(|(fetched_at, names)| {
+                    fetched_at.elapsed() >= self.ttl || !names.iter().any(|n| n == table)
+                })
+                .unwrap_or(true);
+            drop(cache);
+            if need_fetch {
+                let names = self.fetch_all_table_names().await;
+                *self.tables_cache.write().await = Some((Instant::now(), names.clone()));
+                if !names.iter().any(|n| n == table) {
+                    tracing::debug!(
+                        conn = %self.conn,
+                        db = ?self.db,
+                        table = %table,
+                        "skip show_columns: table not in schema"
+                    );
+                    return Vec::new();
+                }
+            } else if let Some((_, names)) = self.tables_cache.read().await.as_ref() {
+                if !names.iter().any(|n| n == table) {
+                    tracing::debug!(
+                        conn = %self.conn,
+                        db = ?self.db,
+                        table = %table,
+                        "skip show_columns: table not in schema"
+                    );
+                    return Vec::new();
+                }
+            }
+        }
+
         match self.qb.show_columns(&self.conn, table, db).await {
             Ok(res) => {
                 let cols: Vec<(String, String)> = res

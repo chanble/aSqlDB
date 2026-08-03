@@ -64,7 +64,7 @@ impl SchemaProvider for DatabaseSchema {
         let prefix_lower = prefix.to_lowercase();
         self.tables
             .keys()
-            .filter(|n| prefix.is_empty() || n.to_lowercase().starts_with(&prefix_lower))
+            .filter(|n| prefix.is_empty() || n.to_lowercase().contains(&prefix_lower))
             .take(limit)
             .cloned()
             .collect()

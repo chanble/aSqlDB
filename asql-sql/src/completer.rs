@@ -52,12 +52,13 @@ impl<P: SchemaProvider> Completer<P> {
                         self.suggest_keywords_after_table("")
                     }
                 } else {
-                    // Still typing a partial table name → matching suggestions
-                    let mut s = self.suggest_tables(input).await;
-                    s.extend(self.suggest_columns_with_aliases(&aliases, input).await);
-                    s.extend(self.suggest_functions(input));
-                    s.extend(self.suggest_keywords(input));
-                    s
+                    let text = request.text_before_cursor();
+                    let stripped = &text[..text.len().saturating_sub(input.len())];
+                    if self.is_table_introducer(stripped) {
+                        self.suggest_tables(input).await
+                    } else {
+                        self.suggest_keywords_after_table(input)
+                    }
                 }
             }
 
@@ -126,7 +127,7 @@ impl<P: SchemaProvider> Completer<P> {
         };
 
         if !input_lower.is_empty() {
-            suggestions.retain(|s| s.text.to_lowercase().starts_with(&input_lower));
+            suggestions.retain(|s| s.text.to_lowercase().contains(&input_lower));
         }
 
         suggestions
@@ -302,4 +303,92 @@ pub async fn get_suggestions<P: SchemaProvider>(
     let completer = Completer::new(db_type, provider);
     let request = CompletionRequest::new(sql, cursor_position);
     completer.get_suggestions(&request).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::provider::SchemaProvider;
+    use crate::suggestion::SuggestionKind;
+    use async_trait::async_trait;
+    use std::sync::Mutex;
+
+    /// Mock provider that records which methods were called.
+    struct MockProvider {
+        tables: Vec<String>,
+        columns_called: Mutex<bool>,
+        columns_for_called: Mutex<bool>,
+    }
+
+    #[async_trait]
+    impl SchemaProvider for MockProvider {
+        async fn table_names(&self, prefix: &str, limit: usize) -> Vec<String> {
+            let pl = prefix.to_lowercase();
+            self.tables
+                .iter()
+                .filter(|t| pl.is_empty() || t.to_lowercase().contains(&pl))
+                .take(limit)
+                .cloned()
+                .collect()
+        }
+        async fn columns(&self, _table: &str) -> Vec<(String, String)> {
+            *self.columns_called.lock().unwrap() = true;
+            Vec::new()
+        }
+        async fn columns_for(&self, _tables: &[String]) -> Vec<(String, String)> {
+            *self.columns_for_called.lock().unwrap() = true;
+            Vec::new()
+        }
+    }
+
+    fn mock(tables: &[&str]) -> Arc<MockProvider> {
+        Arc::new(MockProvider {
+            tables: tables.iter().map(|s| s.to_string()).collect(),
+            columns_called: Mutex::new(false),
+            columns_for_called: Mutex::new(false),
+        })
+    }
+
+    #[tokio::test]
+    async fn partial_table_name_only_suggests_tables() {
+        let p = mock(&["sai_qixi_festival26_cp_log", "sai_qixi_festival26_gift_log"]);
+        let sql = "SELECT * FROM sai_qixi_festival2";
+        let suggestions = get_suggestions(DatabaseType::MySql, p.clone(), sql, sql.len()).await;
+
+        assert!(*p.columns_called.lock().unwrap() == false);
+        assert!(*p.columns_for_called.lock().unwrap() == false);
+        assert!(suggestions.iter().all(|s| s.kind == SuggestionKind::Table));
+        assert_eq!(suggestions.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn substring_table_name_not_prefix_still_suggests() {
+        let p = mock(&["sai_qixi_festival26_cp_log", "sai_qixi_festival26_gift_log"]);
+        let sql = "SELECT * FROM qixi_festival26";
+        let suggestions = get_suggestions(DatabaseType::MySql, p.clone(), sql, sql.len()).await;
+
+        assert!(suggestions.iter().all(|s| s.kind == SuggestionKind::Table));
+        assert_eq!(suggestions.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn complete_table_plus_space_only_keywords() {
+        let p = mock(&["sai_qixi_festival26_cp_log"]);
+        let sql = "SELECT * FROM sai_qixi_festival26_cp_log ";
+        let suggestions = get_suggestions(DatabaseType::MySql, p.clone(), sql, sql.len()).await;
+
+        assert!(*p.columns_called.lock().unwrap() == false);
+        assert!(*p.columns_for_called.lock().unwrap() == false);
+        assert!(suggestions.iter().all(|s| s.kind == SuggestionKind::Keyword));
+    }
+
+    #[tokio::test]
+    async fn keyword_after_table_with_prefix_suggests_keywords() {
+        let p = mock(&["sai_qixi_festival26_cp_log"]);
+        let sql = "SELECT * FROM sai_qixi_festival26_cp_log limi";
+        let suggestions = get_suggestions(DatabaseType::MySql, p.clone(), sql, sql.len()).await;
+
+        assert!(suggestions.iter().any(|s| s.text == "LIMIT" && s.kind == SuggestionKind::Keyword));
+        assert!(!suggestions.iter().any(|s| s.kind == SuggestionKind::Table));
+    }
 }

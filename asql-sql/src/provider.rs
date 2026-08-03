@@ -7,7 +7,7 @@ use async_trait::async_trait;
 /// rather than errors so the completer stays resilient to db hiccups.
 #[async_trait]
 pub trait SchemaProvider: Send + Sync {
-    /// Return up to `limit` table names that start with `prefix`
+    /// Return up to `limit` table names that contain `prefix`
     /// (case-insensitive). Empty `prefix` means "all tables up to limit".
     async fn table_names(&self, prefix: &str, limit: usize) -> Vec<String>;
 
