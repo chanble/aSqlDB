@@ -290,7 +290,7 @@ function formatIndexType(idx: Record<string, any>): string {
                 <strong>{{ col.Field }}</strong>
                 <a href="#" @click.prevent="dropColumn(col.Field)" style="margin-left:8px;font-size:11px">{{ $t('tableStructure.drop') }}</a>
               </td>
-              <td>{{ col.Type }}{{ col.Null ? '' : ' NOT NULL' }}{{ col.Key === 'PRI' ? ' PRIMARY KEY' : '' }}{{ col.Extra }}</td>
+              <td>{{ col.Type }}{{ col.Null ? '' : ' NOT NULL' }}{{ col.Key === 'PRI' ? ' PRIMARY KEY' : '' }}{{ col.Extra ? ' ' + col.Extra : '' }}</td>
               <td>{{ col.Comment }}</td>
             </tr>
           </tbody>
